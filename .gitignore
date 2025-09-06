@@ -67,3 +67,6 @@ infrastructure/lambdas/*/node_modules/
 infrastructure/lambdas/*/*.zip
 /src/generated/prisma
 .swarm/memory.db
+
+# Local Netlify folder
+.netlify
