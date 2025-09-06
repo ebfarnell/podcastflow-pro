@@ -1,0 +1,1092 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                           String                  @id @default(cuid())
+  email                        String                  @unique
+  password                     String
+  name                         String
+  role                         UserRole
+  organizationId               String?
+  organization                 Organization?           @relation(fields: [organizationId], references: [id])
+  isActive                     Boolean                 @default(true)
+  emailVerified                Boolean                 @default(false)
+  createdAt                    DateTime                @default(now())
+  updatedAt                    DateTime                @updatedAt
+  lastLoginAt                  DateTime?
+  preferences                  Json?                   @default("{}")
+  avatar                       String?
+  phone                        String?
+  department                   String?
+  title                        String?
+  bio                          String?
+  timezone                     String?                 @default("America/New_York")
+  language                     String?                 @default("en")
+  emailNotifications           Boolean?                @default(true)
+  pushNotifications            Boolean?                @default(true)
+  smsNotifications             Boolean?                @default(false)
+  theme                        String?                 @default("light")
+  emailFrequency               String?                 @default("daily")
+  showWelcomeMessage           Boolean?                @default(true)
+  twoFactorEnabled             Boolean?                @default(false)
+  twoFactorSecret              String?
+  emailLogs                    EmailLog[]              @relation("EmailLogUser")
+  emailQueues                  EmailQueue[]            @relation("EmailQueueUser")
+  suppressionListAdditions     EmailSuppressionList[]  @relation("EmailSuppressionAdder")
+  platformEmailSettingsUpdates PlatformEmailSettings[] @relation("PlatformEmailSettingsUpdater")
+  notifications                Notification[]
+  sessions                     Session[]
+  uploadedFiles                UploadedFile[]
+  deletionRequestsCreated      DeletionRequest[]       @relation("DeletionRequester")
+  deletionRequestsReviewed     DeletionRequest[]       @relation("DeletionReviewer")
+  workflowSettingsCreated      WorkflowSettings[]      @relation("WorkflowSettingsCreatedBy")
+  workflowSettingsUpdated      WorkflowSettings[]      @relation("WorkflowSettingsUpdatedBy")
+  youTubeConnections           YouTubeConnection[]
+  apiKeys                      ApiKey[]
+  webhooks                     Webhook[]
+  twoFactorBackupCodes         TwoFactorBackupCode[]
+  passwordHistory              PasswordHistory[]
+  passwordChangedAt            DateTime?
+  mfaEnrolledAt                DateTime?
+  lockedUntil                  DateTime?
+  failedLoginAttempts          Int?                    @default(0)
+  requirePasswordChange        Boolean?                @default(false)
+}
+
+model Session {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  token          String   @unique
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  lastAccessedAt DateTime @default(now())
+  userAgent      String?
+  ipAddress      String?
+}
+
+model Organization {
+  id                      String                  @id @default(cuid())
+  name                    String
+  schemaName              String                  @unique
+  active                  Boolean                 @default(true)
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  billingPlanId           String?
+  stripeCustomerId        String?
+  stripeSubscriptionId    String?
+  subscriptionStatus      String?
+  trialEndsAt             DateTime?
+  settings                Json?                   @default("{}")
+  deletedAt               DateTime?
+  parentOrganizationId    String?
+  type                    String                  @default("standard")
+  industry                String?
+  website                 String?
+  primaryColor            String?                 @default("#007bff")
+  logoUrl                 String?
+  timezone                String?                 @default("America/New_York")
+  addressLine1            String?
+  addressLine2            String?
+  city                    String?
+  state                   String?
+  postalCode              String?
+  country                 String?                 @default("US")
+  phone                   String?
+  billingEmail            String?
+  techContactEmail        String?
+  features                Json?                   @default("[]")
+  metadata                Json?                   @default("{}")
+  slug                    String                  @unique
+  isActive                Boolean                 @default(true)
+  plan                    String?                 @default("professional")
+  status                  String?                 @default("active")
+  billingAmount           Float?                  @default(299)
+  email                   String?
+  address                 String?
+  taxId                   String?
+  hiddenFromBilling       Boolean?                @default(false)
+  yearlyForecast          Float?                  @default(0)
+  yearlyGoal              Float?                  @default(0)
+  users                   User[]
+  emailAnalyticsSummaries EmailAnalyticsSummary[]
+  emailLogs               EmailLog[]
+  emailTemplates          EmailTemplate[]
+  emailQueues             EmailQueue[]
+  uploadedFiles           UploadedFile[]
+  youTubeApiConfig        YouTubeApiConfig?
+  deletionRequests        DeletionRequest[]
+  workflowSettings        WorkflowSettings[]
+  youTubeConnections      YouTubeConnection[]
+  apiKeys                 ApiKey[]
+  webhooks                Webhook[]
+  ipRules                 IpRule[]
+  securityAuditLogs       SecurityAuditLog[]
+  webhookSigningKeys      WebhookSigningKey[]
+}
+
+model UsageRecord {
+  id             String   @id @default(cuid())
+  organizationId String
+  metric         String
+  value          Float
+  timestamp      DateTime @default(now())
+  metadata       Json?
+}
+
+model BillingPlan {
+  id              String   @id @default(cuid())
+  name            String
+  apiCallsLimit   Int?     @default(0)
+  storageLimit    Float?   @default(0)
+  bandwidthLimit  Float?   @default(0)
+  campaignsLimit  Int?     @default(0)
+  usersLimit      Int?     @default(0)
+  emailSendsLimit Int?     @default(0)
+  monthlyPrice    Float?   @default(0)
+  yearlyPrice     Float?
+  features        Json?
+  isActive        Boolean? @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+  showsLimit      Int?     @default(0)
+}
+
+model SystemMetric {
+  id              String   @id @default(cuid())
+  cpu             Float
+  memory          Float
+  disk            Float
+  activeUsers     Int
+  apiRequests     Int
+  avgResponseTime Float
+  timestamp       DateTime @default(now())
+  details         Json?
+}
+
+model MonitoringAlert {
+  id         String    @id @default(cuid())
+  type       String
+  severity   String
+  service    String
+  message    String
+  details    Json?
+  status     String    @default("active")
+  resolvedAt DateTime?
+  resolvedBy String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model SystemLog {
+  id             String   @id @default(cuid())
+  level          String
+  source         String
+  message        String
+  userId         String?
+  organizationId String?
+  requestId      String?
+  ipAddress      String?
+  userAgent      String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+}
+
+model ServiceHealth {
+  id           String    @id @default(cuid())
+  service      String
+  status       String
+  uptime       Float
+  responseTime Float
+  lastChecked  DateTime
+  lastIncident DateTime?
+  details      Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model YouTubeApiConfig {
+  id             String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  organizationId String    @unique
+  
+  // API Key configuration
+  apiKey         String?   // Encrypted API key
+  
+  // OAuth configuration
+  clientId       String?
+  clientSecret   String?   // Encrypted
+  redirectUri    String?
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiry    DateTime?
+  
+  // Channel information
+  channelId      String?
+  channelName    String?
+  
+  // Quota management
+  quotaLimit     Int       @default(10000)
+  quotaUsed      Int       @default(0)
+  quotaResetAt   DateTime?
+  
+  // Status
+  isActive       Boolean   @default(true)
+  
+  // Timestamps
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  
+  // Sync frequency
+  syncFrequency  String?   @default("daily")
+  
+  // Relations
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model YouTubeChannel {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  organizationId       String
+  channelId            String    // YouTube's channel ID
+  channelName          String    // Channel handle (@username)
+  channelTitle         String    // Display name
+  description          String?
+  customUrl            String?
+  publishedAt          DateTime?
+  
+  // Statistics
+  subscriberCount      BigInt    @default(0)
+  videoCount           Int       @default(0)
+  viewCount            BigInt    @default(0)
+  
+  // Media and branding
+  thumbnails           Json      @default("{}")
+  bannerImageUrl       String?
+  profileImageUrl      String?
+  
+  // Features
+  monetizationEnabled  Boolean   @default(false)
+  verificationStatus   String    @default("unverified")
+  
+  // Sync tracking
+  isActive             Boolean   @default(true)
+  lastSyncAt           DateTime?
+  syncStatus           String    @default("pending")
+  syncError            String?
+  
+  // Timestamps
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  
+  // Relations will be handled via queries, not Prisma relations
+  
+  @@unique([organizationId, channelId])
+}
+
+model YouTubeVideo {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  organizationId       String
+  channelId            String
+  videoId              String    // YouTube's video ID
+  title                String
+  description          String?
+  publishedAt          DateTime?
+  duration             String?   // ISO 8601 duration
+  durationSeconds      Int?      // Duration in seconds
+  
+  // Status
+  privacyStatus        String    @default("public")
+  uploadStatus         String    @default("processed")
+  license              String    @default("youtube")
+  
+  // Statistics
+  viewCount            BigInt    @default(0)
+  likeCount            Int       @default(0)
+  commentCount         Int       @default(0)
+  favoriteCount        Int       @default(0)
+  
+  // Content
+  thumbnails           Json      @default("{}")
+  tags                 String[]
+  categoryId           String?
+  defaultLanguage      String?
+  defaultAudioLanguage String?
+  
+  // Monetization
+  monetizationDetails  Json      @default("{}")
+  contentRating        Json      @default("{}")
+  restrictions         String[]
+  
+  // Sync tracking
+  lastSyncAt           DateTime?
+  syncStatus           String    @default("pending")
+  
+  // Timestamps
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  
+  // Relations will be handled via queries
+  
+  @@unique([organizationId, videoId])
+  @@index([channelId])
+}
+
+model YouTubePlaylist {
+  id            String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  organizationId String
+  channelId     String
+  playlistId    String    // YouTube's playlist ID
+  title         String
+  description   String?
+  publishedAt   DateTime?
+  
+  // Configuration
+  privacyStatus String    @default("public")
+  itemCount     Int       @default(0)
+  
+  // Media
+  thumbnails    Json      @default("{}")
+  
+  // Sync tracking
+  lastSyncAt    DateTime?
+  syncStatus    String    @default("pending")
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@unique([organizationId, playlistId])
+  @@index([channelId])
+}
+
+model YouTubeAnalytics {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  organizationId          String
+  channelId               String?
+  videoId                 String?
+  date                    DateTime  @db.Date
+  period                  String    @default("day")
+  
+  // View metrics
+  views                   BigInt    @default(0)
+  impressions             BigInt    @default(0)
+  clickThroughRate        Decimal   @default(0) @db.Decimal(5,4)
+  
+  // Engagement metrics
+  likes                   Int       @default(0)
+  dislikes                Int       @default(0)
+  comments                Int       @default(0)
+  shares                  Int       @default(0)
+  subscribersGained       Int       @default(0)
+  subscribersLost         Int       @default(0)
+  
+  // Watch time metrics
+  watchTimeMinutes        BigInt    @default(0)
+  averageViewDuration     Int       @default(0)
+  averageViewPercentage   Decimal   @default(0) @db.Decimal(5,2)
+  
+  // Revenue metrics
+  estimatedRevenue        Decimal   @default(0) @db.Decimal(10,2)
+  adImpressions           BigInt    @default(0)
+  cpm                     Decimal   @default(0) @db.Decimal(8,2)
+  rpm                     Decimal   @default(0) @db.Decimal(8,2)
+  
+  // Breakdown data
+  trafficSources          Json      @default("{}")
+  deviceTypes             Json      @default("{}")
+  geography               Json      @default("{}")
+  demographics            Json      @default("{}")
+  
+  // Timestamps
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  
+  @@unique([organizationId, channelId, videoId, date, period])
+  @@index([channelId])
+  @@index([videoId])
+  @@index([date])
+}
+
+model YouTubeSyncLog {
+  id              String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  organizationId  String
+  syncType        String    // channels, videos, analytics, playlists
+  status          String    @default("started")
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  
+  // Progress tracking
+  totalItems      Int       @default(0)
+  processedItems  Int       @default(0)
+  successfulItems Int       @default(0)
+  failedItems     Int       @default(0)
+  
+  // Error tracking
+  errorMessage    String?
+  errorDetails    Json      @default("{}")
+  
+  // Quota usage
+  quotaUsed       Int       @default(0)
+  
+  // Configuration and results
+  syncConfig      Json      @default("{}")
+  results         Json      @default("{}")
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model PlatformEmailSettings {
+  id              String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  provider        String?   @db.VarChar(10)
+  sesConfig       Json?     @default("{\"region\": null, \"configured\": false, \"useIAMRole\": true}")
+  smtpConfig      Json?     @default("{\"host\": null, \"port\": null, \"secure\": false, \"configured\": false}")
+  quotaLimits     Json?     @default("{\"sendRate\": 0, \"dailyQuota\": 0, \"maxRecipients\": 50}")
+  monitoring      Json?     @default("{\"trackOpens\": false, \"trackClicks\": false, \"trackBounces\": true, \"trackComplaints\": true}")
+  suppressionList Json?     @default("{\"enabled\": false, \"autoAddBounces\": true, \"autoAddComplaints\": true}")
+  isConfigured    Boolean?  @default(false)
+  createdAt       DateTime? @default(now())
+  updatedAt       DateTime? @default(now()) @updatedAt
+  updatedBy       String?
+  updater         User?     @relation("PlatformEmailSettingsUpdater", fields: [updatedBy], references: [id], onUpdate: NoAction)
+}
+
+model EmailSuppressionList {
+  id       String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  email    String    @unique @db.VarChar(255)
+  reason   String    @db.VarChar(50)
+  source   String?   @db.VarChar(100)
+  metadata Json?     @default("{}")
+  addedAt  DateTime? @default(now())
+  addedBy  String?
+  adder    User?     @relation("EmailSuppressionAdder", fields: [addedBy], references: [id], onUpdate: NoAction)
+
+  @@index([email])
+  @@index([reason])
+}
+
+model EmailLog {
+  id                String       @id @default(dbgenerated("(gen_random_uuid())::text"))
+  organizationId    String
+  userId            String?
+  toEmail           String       @db.VarChar(255)
+  fromEmail         String       @db.VarChar(255)
+  recipient         String       @db.VarChar(255) // deprecated, use toEmail
+  subject           String?      @db.VarChar(500)
+  templateKey       String?      @db.VarChar(50)
+  status            String       @default("pending") @db.VarChar(20)
+  messageId         String?      @db.VarChar(255)
+  providerMessageId String?      @db.VarChar(255)
+  errorMessage      String?
+  metadata          Json?        @default("{}")
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  openedAt          DateTime?
+  clickedAt         DateTime?
+  bouncedAt         DateTime?
+  bounceType       String?       @db.VarChar(20)
+  bounceReason     String?
+  complainedAt      DateTime?
+  createdAt         DateTime?    @default(now())
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user              User?        @relation("EmailLogUser", fields: [userId], references: [id], onUpdate: NoAction)
+  emailQueue        EmailQueue[]
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([templateKey])
+}
+
+model SystemEmailTemplate {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String    @unique @db.VarChar(50)
+  name        String    @db.VarChar(100)
+  description String?
+  subject     String    @db.VarChar(500)
+  htmlContent String
+  textContent String
+  variables   Json?     @default("[]")
+  category    String    @db.VarChar(50)
+  isActive    Boolean?  @default(true)
+  createdAt   DateTime? @default(now())
+  updatedAt   DateTime? @default(now()) @updatedAt
+
+  @@index([key])
+  @@index([category])
+}
+
+model EmailQueue {
+  id             String       @id @default(dbgenerated("(gen_random_uuid())::text"))
+  organizationId String
+  userId         String?
+  recipient      String       @db.VarChar(255)
+  templateKey    String       @db.VarChar(50)
+  templateData   Json         @default("{}")
+  priority       Int?         @default(5)
+  scheduledFor   DateTime?    @default(now())
+  attempts       Int?         @default(0)
+  lastAttemptAt  DateTime?
+  lastError      String?
+  status         String?      @default("pending") @db.VarChar(20)
+  emailLogId     String?
+  createdAt      DateTime?    @default(now())
+  emailLog       EmailLog?    @relation(fields: [emailLogId], references: [id], onUpdate: NoAction)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user           User?        @relation("EmailQueueUser", fields: [userId], references: [id], onUpdate: NoAction)
+
+  @@index([status, scheduledFor])
+  @@index([organizationId])
+}
+
+model EmailAnalyticsSummary {
+  id               String        @id @default(dbgenerated("(gen_random_uuid())::text"))
+  organizationId   String?
+  date             DateTime      @db.Date
+  sent             Int?          @default(0)
+  delivered        Int?          @default(0)
+  opened           Int?          @default(0)
+  clicked          Int?          @default(0)
+  bounced          Int?          @default(0)
+  complained       Int?          @default(0)
+  failed           Int?          @default(0)
+  uniqueRecipients Int?          @default(0)
+  createdAt        DateTime?     @default(now())
+  updatedAt        DateTime?     @default(now()) @updatedAt
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([organizationId, date])
+  @@index([organizationId, date])
+}
+
+model WorkflowSettings {
+  id             String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  organizationId String
+  workflowType   String    @default("campaign_approval")
+  stages         Json      @default("[]")
+  thresholds     Json      @default("{\"approval_trigger\": 90, \"auto_win\": 100, \"rejection_fallback\": 65, \"reservation_threshold\": 80}")
+  notifications  Json      @default("{\"enabled\": true, \"notify_on_trigger\": true, \"notify_on_approval\": true, \"notify_on_rejection\": true, \"recipient_roles\": [\"admin\", \"master\"]}")
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+  createdBy      String?
+  updatedBy      String?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser  User?        @relation("WorkflowSettingsCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser  User?        @relation("WorkflowSettingsUpdatedBy", fields: [updatedBy], references: [id])
+  
+  @@unique([organizationId, workflowType])
+  @@index([organizationId])
+}
+
+model EmailTemplate {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key                   String    @db.VarChar(50)
+  name                  String    @db.VarChar(100)
+  description           String?
+  subject               String    @db.VarChar(500)
+  htmlContent           String
+  textContent           String
+  variables             Json?     @default("[]")
+  category              String    @db.VarChar(50)
+  isActive              Boolean?  @default(true)
+  isSystemDefault       Boolean?  @default(false)
+  organizationId        String?
+  organization          Organization? @relation(fields: [organizationId], references: [id])
+  basedOnSystemTemplate String?   @db.VarChar(50)
+  createdAt             DateTime? @default(now())
+  updatedAt             DateTime? @default(now()) @updatedAt
+  createdBy             String?   @db.Uuid
+
+  @@unique([key, organizationId])
+  @@index([key])
+  @@index([category])
+  @@index([organizationId])
+}
+
+model tenant_access_log {
+  id              Int       @id @default(autoincrement())
+  user_id         String
+  organization_id String
+  accessed_schema String
+  query_type      String
+  table_name      String?
+  row_count       Int?
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([organization_id, created_at(sort: Desc)], map: "idx_tenant_access_log_org_date")
+  @@index([user_id], map: "idx_tenant_access_log_user")
+  @@index([user_id, created_at(sort: Desc)], map: "idx_tenant_access_log_user_date")
+}
+
+model Email {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  messageId         String    @unique @db.VarChar(255)
+  from              String    @db.VarChar(255)
+  to                String[]
+  cc                String[]
+  bcc               String[]
+  subject           String    @db.VarChar(500)
+  html              String?
+  text              String?
+  status            String    @default("pending") @db.VarChar(20)
+  organizationId    String?
+  providerMessageId String?   @db.VarChar(255)
+  response          String?
+  errorMessage      String?
+  sentAt            DateTime?
+  metadata          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([messageId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model EmailMetrics {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date           DateTime @db.Date
+  organizationId String   @default("platform")
+  sent           Int      @default(0)
+  delivered      Int      @default(0)
+  opened         Int      @default(0)
+  clicked        Int      @default(0)
+  bounced        Int      @default(0)
+  complained     Int      @default(0)
+  failed         Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([date, organizationId])
+  @@index([organizationId])
+  @@index([date])
+}
+
+model EmailTrackingEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  emailLogId String   @db.Uuid
+  eventType  String   @db.VarChar(20) // open, click, bounce, complaint
+  timestamp  DateTime
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([emailLogId])
+  @@index([eventType])
+  @@index([timestamp])
+}
+
+model Notification {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String
+  organizationId String?
+  title          String    @db.VarChar(255)
+  message        String
+  type           String    @db.VarChar(50)
+  eventType      String?   @db.VarChar(100)
+  actionUrl      String?   @db.VarChar(500)
+  metadata       Json?
+  priority       String?   @default("medium") @db.VarChar(20)
+  expiresAt      DateTime?
+  read           Boolean   @default(false)
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@index([organizationId])
+  @@index([eventType])
+}
+
+model UserNotificationPreference {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId             String
+  organizationId     String
+  eventType          String
+  enabled            Boolean   @default(true)
+  channels           Json      @default("{\"email\": true, \"inApp\": true, \"slack\": false, \"webhook\": false}")
+  quietHours         Json?
+  digest             Boolean   @default(false)
+  digestFrequency    String?   @db.VarChar(20)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([userId, organizationId, eventType])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([eventType])
+}
+
+model NotificationDelivery {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  idempotencyKey  String    @unique @db.VarChar(255)
+  eventType       String    @db.VarChar(100)
+  eventPayload    Json
+  organizationId  String
+  recipientId     String?
+  recipientEmail  String?   @db.VarChar(255)
+  channel         String    @db.VarChar(50)
+  status          String    @db.VarChar(50)
+  attempts        Int       @default(0)
+  lastAttemptAt   DateTime?
+  deliveredAt     DateTime?
+  failureReason   String?
+  metadata        Json?
+  nextRetryAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([idempotencyKey])
+  @@index([organizationId])
+  @@index([recipientId])
+  @@index([status])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([nextRetryAt])
+}
+
+model NotificationTemplate {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  organizationId  String?
+  eventType       String    @db.VarChar(100)
+  channel         String    @db.VarChar(50)
+  name            String    @db.VarChar(255)
+  subject         String?   @db.VarChar(500)
+  body            String
+  metadata        Json?
+  variables       Json?
+  isDefault       Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([eventType])
+  @@index([channel])
+  @@index([isDefault])
+}
+
+model NotificationQueue {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  organizationId  String
+  eventType       String    @db.VarChar(100)
+  eventPayload    Json
+  recipientIds    Json
+  status          String    @default("pending") @db.VarChar(50)
+  priority        Int       @default(5)
+  scheduledFor    DateTime  @default(now())
+  processedAt     DateTime?
+  attempts        Int       @default(0)
+  maxAttempts     Int       @default(3)
+  lastError       String?
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([priority])
+  @@index([organizationId])
+}
+
+model NotificationAuditLog {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  organizationId  String
+  eventType       String    @db.VarChar(100)
+  action          String    @db.VarChar(50)
+  userId          String?
+  targetUserId    String?
+  metadata        Json?
+  result          String    @db.VarChar(50)
+  errorMessage    String?
+  duration        Int?
+  createdAt       DateTime  @default(now())
+
+  @@index([organizationId])
+  @@index([eventType])
+  @@index([action])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model UploadedFile {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  originalName   String
+  fileName       String
+  fileSize       Int
+  mimeType       String
+  category       String
+  s3Key          String       @unique
+  s3Url          String
+  entityType     String?
+  entityId       String?
+  description    String?
+  uploadedById   String
+  uploadedBy     User         @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  status         String       @default("active")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([uploadedById])
+  @@index([category])
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DeletionRequest {
+  id             String       @id @default(cuid())
+  entityType     String
+  entityId       String
+  entityName     String
+  requestedBy    String
+  requester      User         @relation("DeletionRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+  requestedAt    DateTime     @default(now())
+  reviewedBy     String?
+  reviewer       User?        @relation("DeletionReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?
+  status         String       @default("pending")
+  reason         String?
+  reviewNotes    String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([entityType, entityId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([requestedBy])
+}
+
+model YouTubeConnection {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  organizationId        String
+  connectionName        String
+  accountEmail          String?
+  channelId             String?
+  channelTitle          String?
+  channelDescription    String?
+  channelThumbnail      String?
+  accessToken           String?
+  refreshToken          String?
+  tokenExpiresAt        DateTime?
+  scopes                String[]
+  isActive              Boolean   @default(true)
+  isPrimary             Boolean   @default(false)
+  connectedBy           String
+  lastSync              DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connectedByUser       User @relation(fields: [connectedBy], references: [id], onDelete: Restrict)
+  showYouTubeConnections ShowYouTubeConnection[]
+  
+  @@index([organizationId])
+  @@index([channelId])
+  @@index([isActive])
+}
+
+model ShowYouTubeConnection {
+  id           String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  showId       String
+  connectionId String
+  playlistId   String?
+  isDefault    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  
+  // Relations
+  connection   YouTubeConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  
+  @@unique([showId, connectionId])
+  @@index([showId])
+  @@index([connectionId])
+}
+
+enum UserRole {
+  master
+  admin
+  sales
+  producer
+  talent
+  client
+}
+
+// Security-related models
+model ApiKey {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  keyHash        String
+  lastFourChars  String
+  scopes         String[]     @default([])
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  lastUsedIp     String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  revokedAt      DateTime?
+  revokedBy      String?
+  revokedReason  String?
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([keyHash])
+  @@index([isActive])
+}
+
+model IpRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           String // 'allow' or 'deny'
+  cidr           String
+  description    String?
+  applyToAdmins  Boolean      @default(false)
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  createdBy      String
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([enabled])
+}
+
+model LoginAttempt {
+  id             String    @id @default(cuid())
+  email          String?
+  ipAddress      String
+  userAgent      String?
+  attemptedAt    DateTime  @default(now())
+  success        Boolean   @default(false)
+  failureReason  String?
+  organizationId String?
+
+  @@index([email])
+  @@index([ipAddress])
+  @@index([attemptedAt])
+}
+
+model TwoFactorBackupCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([usedAt])
+}
+
+model SecurityAuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  userEmail      String?
+  action         String
+  resource       String
+  resourceId     String?
+  changes        Json?
+  ipAddress      String?
+  userAgent      String?
+  success        Boolean      @default(true)
+  errorMessage   String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model PasswordHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model WebhookSigningKey {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  keyId          String       @unique
+  secret         String
+  algorithm      String       @default("hmac-sha256")
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  rotatedAt      DateTime?
+  expiresAt      DateTime?
+  webhooks       Webhook[]
+
+  @@index([organizationId])
+  @@index([keyId])
+}
+
+model Webhook {
+  id                  String              @id @default(cuid())
+  organizationId      String
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                String
+  url                 String
+  events              String[]            @default([])
+  headers             Json?               @default("{}")
+  isActive            Boolean             @default(true)
+  secret              String?
+  signingKeyId        String?
+  signingKey          WebhookSigningKey?  @relation(fields: [signingKeyId], references: [keyId], onDelete: SetNull)
+  lastTriggered       DateTime?
+  failureCount        Int                 @default(0)
+  consecutiveFailures Int                 @default(0)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  logs                WebhookLog[]
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([isActive])
+}
+
+model WebhookLog {
+  id            String    @id @default(cuid())
+  webhookId     String
+  webhook       Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event         String
+  payload       Json
+  statusCode    Int?
+  response      String?
+  error         String?
+  attemptNumber Int       @default(1)
+  deliveredAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([webhookId])
+  @@index([createdAt])
+  @@index([event])
+}

@@ -1,0 +1,427 @@
+// =====================================================
+// EXECUTIVE REPORTING SCHEMA ADDITIONS
+// =====================================================
+// Add these to your schema.prisma file
+
+// Update Show model with these additional fields:
+// releaseFrequency       String?   // daily, weekly, biweekly, monthly
+// releaseDay             String?   // monday, tuesday, etc. or specific date
+// revenueSharingType     String?   // percentage, fixed, tiered
+// revenueSharingPercentage Float?
+// revenueSharingFixedAmount Float?
+// revenueSharingNotes    String?   @db.Text
+// 
+// And add these relations:
+// showPlacements         ShowPlacement[]
+// blockedSpots           BlockedSpot[]
+// orders                 OrderItem[]
+// inventory              Inventory[]
+// scheduleItems          ScheduleItem[]
+
+// Update Episode model with these additional fields:
+// producerNotes          String?   @db.Text
+// talentNotes            String?   @db.Text
+// recordingDate          DateTime?
+// publishUrl             String?
+//
+// And add this relation:
+// episodeSpots           EpisodeSpot[]
+// orderItems             OrderItem[]
+
+// Update Campaign model with this relation:
+// orders                 Order[]
+// approvals              CampaignApproval[]
+// schedules              CampaignSchedule[]
+
+// Update User model with these relations:
+// submittedOrders        Order[]    @relation("OrderSubmitter")
+// approvedOrders         Order[]    @relation("OrderApprover")
+// bookedOrders           Order[]    @relation("OrderBooker")
+// confirmedOrders        Order[]    @relation("OrderConfirmer")
+// createdOrders          Order[]    @relation("OrderCreator")
+// exportedSchedules      CampaignSchedule[] @relation("ScheduleExporter")
+// createdSchedules       CampaignSchedule[] @relation("ScheduleCreator")
+// budgetEntries          BudgetEntry[]
+// employeeCompensation   EmployeeCompensation[]
+// requestedApprovals     CampaignApproval[] @relation("ApprovalRequester")
+// reviewedApprovals      CampaignApproval[] @relation("ApprovalReviewer")
+
+// Update Organization model with these relations:
+// orders                 Order[]
+// showPlacements         ShowPlacement[]
+// blockedSpots           BlockedSpot[]
+// inventory              Inventory[]
+// budgetCategories       BudgetCategory[]
+// budgetEntries          BudgetEntry[]
+// employeeCompensation   EmployeeCompensation[]
+// quickBooksSync         QuickBooksSync[]
+// financialData          FinancialData[]
+
+// =====================================================
+// NEW MODELS
+// =====================================================
+
+// Show placement configuration
+model ShowPlacement {
+  id                String    @id @default(cuid())
+  showId            String
+  show              Show      @relation(fields: [showId], references: [id])
+  placementType     String    // preroll, midroll, postroll
+  totalSpots        Int       @default(1)
+  liveReadSpots     Int       @default(0)
+  liveReadPercentage Float?
+  defaultLength     Int       @default(30) // seconds
+  availableLengths  Int[]
+  baseRate          Float
+  rates             Json      // rates by length {"15": 500, "30": 1000, "60": 1500}
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([showId])
+}
+
+// Blocked spots for specific advertisers
+model BlockedSpot {
+  id              String      @id @default(cuid())
+  showId          String
+  show            Show        @relation(fields: [showId], references: [id])
+  placementType   String
+  spotNumber      Int
+  advertiserId    String?
+  advertiser      Advertiser? @relation(fields: [advertiserId], references: [id])
+  campaignId      String?
+  campaign        Campaign?   @relation(fields: [campaignId], references: [id])
+  startDate       DateTime?
+  endDate         DateTime?
+  reason          String?
+  createdAt       DateTime    @default(now())
+  
+  @@index([showId])
+  @@index([advertiserId])
+  @@index([campaignId])
+}
+
+// Orders
+model Order {
+  id                  String      @id @default(cuid())
+  orderNumber         String      @unique
+  campaignId          String
+  campaign            Campaign    @relation(fields: [campaignId], references: [id])
+  version             Int         @default(1)
+  parentOrderId       String?
+  parentOrder         Order?      @relation("OrderRevisions", fields: [parentOrderId], references: [id])
+  childOrders         Order[]     @relation("OrderRevisions")
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id])
+  advertiserId        String
+  advertiser          Advertiser  @relation(fields: [advertiserId], references: [id])
+  agencyId            String?
+  agency              Agency?     @relation(fields: [agencyId], references: [id])
+  status              OrderStatus @default(draft)
+  totalAmount         Float
+  discountAmount      Float       @default(0)
+  discountReason      String?
+  netAmount           Float
+  
+  // Approval tracking
+  submittedAt         DateTime?
+  submittedBy         String?
+  submitter           User?       @relation("OrderSubmitter", fields: [submittedBy], references: [id])
+  approvedAt          DateTime?
+  approvedBy          String?
+  approver            User?       @relation("OrderApprover", fields: [approvedBy], references: [id])
+  bookedAt            DateTime?
+  bookedBy            String?
+  booker              User?       @relation("OrderBooker", fields: [bookedBy], references: [id])
+  confirmedAt         DateTime?
+  confirmedBy         String?
+  confirmer           User?       @relation("OrderConfirmer", fields: [confirmedBy], references: [id])
+  
+  // IO/Contract tracking
+  ioNumber            String?
+  ioGeneratedAt       DateTime?
+  contractUrl         String?
+  signedContractUrl   String?
+  contractSignedAt    DateTime?
+  
+  notes               String?     @db.Text
+  internalNotes       String?     @db.Text
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  createdBy           String
+  creator             User        @relation("OrderCreator", fields: [createdBy], references: [id])
+  
+  // Relations
+  orderItems          OrderItem[]
+  approvals           CampaignApproval[]
+  
+  @@index([orderNumber])
+  @@index([campaignId])
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum OrderStatus {
+  draft
+  pending_approval
+  approved
+  booked
+  confirmed
+  cancelled
+}
+
+// Order line items
+model OrderItem {
+  id                String    @id @default(cuid())
+  orderId           String
+  order             Order     @relation(fields: [orderId], references: [id])
+  showId            String
+  show              Show      @relation(fields: [showId], references: [id])
+  episodeId         String?
+  episode           Episode?  @relation(fields: [episodeId], references: [id])
+  placementType     String    // preroll, midroll, postroll
+  spotNumber        Int?
+  airDate           DateTime
+  length            Int       // seconds
+  isLiveRead        Boolean   @default(false)
+  rate              Float
+  actualRate        Float     // after any discounts
+  status            String    @default("pending") // pending, reserved, confirmed, aired, cancelled
+  
+  // Ad creative details
+  adTitle           String?
+  adScript          String?   @db.Text
+  adTalkingPoints   String[]
+  adAudioUrl        String?
+  adApprovalStatus  String    @default("pending")
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  episodeSpots      EpisodeSpot[]
+  
+  @@index([orderId])
+  @@index([showId])
+  @@index([episodeId])
+  @@index([airDate])
+}
+
+// Inventory tracking
+model Inventory {
+  id              String    @id @default(cuid())
+  showId          String
+  show            Show      @relation(fields: [showId], references: [id])
+  date            DateTime
+  placementType   String
+  totalSpots      Int
+  availableSpots  Int
+  reservedSpots   Int       @default(0)
+  bookedSpots     Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([showId, date, placementType])
+  @@index([showId, date])
+}
+
+// Budget categories
+model BudgetCategory {
+  id                String          @id @default(cuid())
+  organizationId    String
+  organization      Organization    @relation(fields: [organizationId], references: [id])
+  name              String
+  type              String          // expense, revenue, cogs
+  parentCategoryId  String?
+  parentCategory    BudgetCategory? @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
+  childCategories   BudgetCategory[] @relation("CategoryHierarchy")
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  
+  // Relations
+  budgetEntries     BudgetEntry[]
+  
+  @@index([organizationId])
+}
+
+// Budget entries
+model BudgetEntry {
+  id              String          @id @default(cuid())
+  organizationId  String
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  categoryId      String
+  category        BudgetCategory  @relation(fields: [categoryId], references: [id])
+  year            Int
+  month           Int
+  budgetAmount    Float
+  actualAmount    Float           @default(0)
+  notes           String?         @db.Text
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  createdBy       String
+  creator         User            @relation(fields: [createdBy], references: [id])
+  
+  @@unique([organizationId, categoryId, year, month])
+  @@index([organizationId, year, month])
+}
+
+// Employee compensation
+model EmployeeCompensation {
+  id                String        @id @default(cuid())
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id])
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  year              Int
+  baseSalary        Float?
+  targetBonus       Float?
+  actualBonus       Float?
+  commissionRate    Float?
+  actualCommission  Float?
+  benefits          Float?
+  effectiveDate     DateTime
+  endDate           DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  
+  @@index([organizationId])
+  @@index([userId])
+}
+
+// QuickBooks sync tracking
+model QuickBooksSync {
+  id                String        @id @default(cuid())
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id])
+  syncType          String        // full, incremental, manual
+  status            String        // pending, running, completed, failed
+  startDate         DateTime?
+  endDate           DateTime?
+  recordsProcessed  Int           @default(0)
+  errors            Json?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime      @default(now())
+  
+  // Relations
+  financialData     FinancialData[]
+  
+  @@index([organizationId])
+}
+
+// Financial data from QuickBooks
+model FinancialData {
+  id              String          @id @default(cuid())
+  organizationId  String
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  accountCode     String
+  accountName     String
+  accountType     String          // revenue, expense, asset, liability, equity
+  year            Int
+  month           Int
+  amount          Float
+  quickbooksId    String?
+  syncId          String?
+  sync            QuickBooksSync? @relation(fields: [syncId], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  @@unique([organizationId, accountCode, year, month])
+  @@index([organizationId, year, month])
+}
+
+// Campaign approval requests
+model CampaignApproval {
+  id                    String    @id @default(cuid())
+  campaignId            String
+  campaign              Campaign  @relation(fields: [campaignId], references: [id])
+  orderId               String?
+  order                 Order?    @relation(fields: [orderId], references: [id])
+  requestedBy           String
+  requester             User      @relation("ApprovalRequester", fields: [requestedBy], references: [id])
+  requestedAt           DateTime  @default(now())
+  status                String    @default("pending") // pending, approved, rejected, revision_requested
+  reviewedBy            String?
+  reviewer              User?     @relation("ApprovalReviewer", fields: [reviewedBy], references: [id])
+  reviewedAt            DateTime?
+  
+  // Rate discrepancy tracking
+  hasRateDiscrepancy    Boolean   @default(false)
+  discrepancyDetails    Json?     // detailed breakdown of rate differences
+  discrepancyAmount     Float?
+  discrepancyPercentage Float?
+  
+  approvalNotes         String?   @db.Text
+  rejectionReason       String?   @db.Text
+  revisionRequested     String?   @db.Text
+  
+  @@index([campaignId])
+  @@index([orderId])
+}
+
+// Episode spots
+model EpisodeSpot {
+  id              String      @id @default(cuid())
+  episodeId       String
+  episode         Episode     @relation(fields: [episodeId], references: [id])
+  orderItemId     String?
+  orderItem       OrderItem?  @relation(fields: [orderItemId], references: [id])
+  placementType   String
+  spotNumber      Int
+  startTime       Int?        // seconds into episode
+  endTime         Int?        // seconds into episode
+  actualLength    Int?
+  status          String      @default("scheduled") // scheduled, recorded, aired, cancelled
+  audioUrl        String?
+  transcript      String?     @db.Text
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([episodeId])
+  @@index([orderItemId])
+}
+
+// Campaign schedules
+model CampaignSchedule {
+  id                String          @id @default(cuid())
+  campaignId        String
+  campaign          Campaign        @relation(fields: [campaignId], references: [id])
+  name              String
+  version           Int             @default(1)
+  status            String          @default("draft") // draft, sent_to_client, approved
+  exportedAt        DateTime?
+  exportedBy        String?
+  exporter          User?           @relation("ScheduleExporter", fields: [exportedBy], references: [id])
+  exportUrl         String?
+  clientApprovedAt  DateTime?
+  notes             String?         @db.Text
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  createdBy         String
+  creator           User            @relation("ScheduleCreator", fields: [createdBy], references: [id])
+  
+  // Relations
+  scheduleItems     ScheduleItem[]
+  
+  @@index([campaignId])
+}
+
+// Schedule items
+model ScheduleItem {
+  id              String            @id @default(cuid())
+  scheduleId      String
+  schedule        CampaignSchedule  @relation(fields: [scheduleId], references: [id])
+  showId          String
+  show            Show              @relation(fields: [showId], references: [id])
+  airDate         DateTime
+  placementType   String
+  length          Int
+  rate            Float
+  isLiveRead      Boolean           @default(false)
+  notes           String?
+  sortOrder       Int?
+  
+  @@index([scheduleId])
+  @@index([showId])
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=PodcastFlow Pro Email Queue Processor
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/curl -X POST http://localhost:3000/api/cron/email-queue -H "Authorization: Bearer podcastflow-cron-2025" -H "Content-Type: application/json"
+User=ec2-user
+StandardOutput=journal
+StandardError=journal

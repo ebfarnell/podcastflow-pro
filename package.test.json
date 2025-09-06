@@ -1,0 +1,43 @@
+{
+  "name": "podcastflow-pro-tests",
+  "version": "1.0.0",
+  "description": "Test dependencies for PodcastFlow Pro multi-tenant testing",
+  "scripts": {
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:security": "jest tests/security",
+    "test:multi-tenant": "node multi-tenant-tests.js",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:security && npm run test:multi-tenant",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.11.3"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.{js,ts}",
+      "!src/**/*.d.ts",
+      "!src/**/*.test.{js,ts}",
+      "!src/**/node_modules/**"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ]
+  }
+}

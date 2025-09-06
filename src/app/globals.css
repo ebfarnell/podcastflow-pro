@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 255, 255, 255;  /* White */
+  --background-end-rgb: 255, 255, 255;    /* White */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 0, 0, 0;  /* Black text for white background */
+    --background-start-rgb: 255, 255, 255;  /* White */
+    --background-end-rgb: 255, 255, 255;    /* White */
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-start-rgb)) !important;
+  min-height: 100vh;
+}
+
+/* Override MUI and any other background styles */
+html {
+  background: transparent !important;
+}
+
+body, #__next {
+  background-color: transparent !important;
+}
+
+/* Force MUI CssBaseline to not set backgrounds */
+.MuiCssBaseline-root {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Ensure all MUI paper and box components respect transparency */
+.MuiBox-root {
+  background-color: transparent;
+}
+
+/* Only apply background to specific paper components that need it */
+.MuiPaper-root {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+/* Improve text selection visibility for number inputs */
+input[type="number"]::-moz-selection,
+input[type="tel"]::-moz-selection,
+input[type="text"]::-moz-selection {
+  background-color: #1976d2;
+  color: white;
+}
+
+input[type="number"]::selection,
+input[type="tel"]::selection,
+input[type="text"]::selection {
+  background-color: #1976d2;
+  color: white;
+}
+
+/* Ensure number inputs behave consistently */
+input[type="number"] {
+  -moz-appearance: textfield; /* Firefox */
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Add thicker borders to all Material-UI Cards */
+.MuiCard-root {
+  border: 2px solid #d1d5db !important;
+}
+
+/* Ensure white background is visible on the body */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgb(255, 255, 255);
+  z-index: -1;
+  pointer-events: none;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer components {
+  .dashboard-card {
+    @apply bg-white rounded-lg shadow-md p-6 transition-all hover:shadow-lg border border-gray-300;
+  }
+  
+  .primary-button {
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .secondary-button {
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-md transition-colors;
+  }
+}

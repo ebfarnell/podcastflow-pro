@@ -1,0 +1,10 @@
+{
+  "name": "deals-lambda",
+  "version": "1.0.0",
+  "description": "Deals and pipeline management Lambda function",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1404.0",
+    "uuid": "^9.0.0"
+  }
+}

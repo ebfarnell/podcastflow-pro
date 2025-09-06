@@ -1,0 +1,56 @@
+You are now connected to database "podcastflow_production" as user "podcastflow".
+SET
+=== ADVERTISERS WITH NULL/BLANK NAMES ===
+ id | name | contactEmail | agencyId | sellerId | isActive | createdAt | createdBy 
+----+------+--------------+----------+----------+----------+-----------+-----------
+(0 rows)
+
+
+=== CAMPAIGNS WITH MISSING/INVALID ADVERTISERS ===
+ campaign_id | campaign_name | advertiserId | budget | status | createdAt | advertiser_name | advertiser_active 
+-------------+---------------+--------------+--------+--------+-----------+-----------------+-------------------
+(0 rows)
+
+
+=== HIERARCHICAL BUDGETS WITH PROBLEMATIC ADVERTISERS ===
+                  id                  | entityType | entityId  | year | month | budgetAmount | actualAmount | advertiser_name | advertiser_active |     issue_type     
+--------------------------------------+------------+-----------+------+-------+--------------+--------------+-----------------+-------------------+--------------------
+ b47228b8-f0ee-404f-9cfd-027d23e7e3bc | advertiser | adv_new_1 | 2025 |     1 |        25000 |        27800 |                 |                   | MISSING_ADVERTISER
+(1 row)
+
+
+=== SELLER ASSIGNMENTS AND ADVERTISER RELATIONSHIPS ===
+         seller_id         | seller_name  | advertiser_count | blank_name_count | no_agency_count 
+---------------------------+--------------+------------------+------------------+-----------------
+ cmd2qff550006og5y4ri8ztev | Sammy Seller |               23 |                0 |               0
+(1 row)
+
+
+=== BUDGET ROLLUP CACHE ANALYSIS ===
+psql:audit_seller_goal_planning.sql:123: ERROR:  column brc.entityId does not exist
+LINE 25: LEFT JOIN "User" u ON u.id = brc."entityId" AND brc."entityT...
+                                      ^
+
+=== POTENTIAL DIRECT GENERATORS IN SELLER ROLLUPS ===
+                record_type                 |              record_id               | record_name  | budget_amount |           entity_name            
+--------------------------------------------+--------------------------------------+--------------+---------------+----------------------------------
+ HierarchicalBudget with missing advertiser | b47228b8-f0ee-404f-9cfd-027d23e7e3bc | Budget Entry |         25000 | Missing Advertiser ID: adv_new_1
+(1 row)
+
+
+=== EXPORTING PROBLEMATIC RECORDS ===
+psql:audit_seller_goal_planning.sql:166: error: \copy: parse error at end of line
+psql:audit_seller_goal_planning.sql:191: ERROR:  syntax error at or near ")"
+LINE 25: ) TO '/tmp/problematic_records.csv' WITH CSV HEADER;
+         ^
+Exported to: /tmp/problematic_records.csv
+
+=== SUMMARY COUNTS ===
+                 metric                  | count 
+-----------------------------------------+-------
+ Advertisers with blank names            | 0
+ Budget entries with missing advertisers | 1
+ Campaigns with missing advertisers      | 0
+ Total Advertisers                       | 23
+(4 rows)
+

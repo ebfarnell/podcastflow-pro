@@ -1,0 +1,10 @@
+{
+  "name": "api-gateway-authorizer",
+  "version": "1.0.0",
+  "description": "API Gateway Lambda Authorizer for JWT validation",
+  "main": "index.js",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.0",
+    "jwks-rsa": "^3.0.1"
+  }
+}

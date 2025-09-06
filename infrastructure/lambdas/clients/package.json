@@ -1,0 +1,9 @@
+{
+  "name": "podcastflow-clients",
+  "version": "1.0.0",
+  "description": "Clients management Lambda for PodcastFlow Pro",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1472.0"
+  }
+}

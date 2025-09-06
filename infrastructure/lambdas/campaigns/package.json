@@ -1,0 +1,10 @@
+{
+  "name": "campaigns",
+  "version": "1.0.0",
+  "description": "Lambda function for managing campaigns with account teams",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1477.0",
+    "uuid": "^9.0.0"
+  }
+}

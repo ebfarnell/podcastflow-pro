@@ -1,0 +1,9 @@
+{
+  "name": "role-assignment",
+  "version": "1.0.0",
+  "description": "Lambda function for managing user role assignments",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1477.0"
+  }
+}

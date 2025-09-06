@@ -1,0 +1,79 @@
+# Code Changes Summary - Direct Advertiser Fix
+
+## File: /src/app/advertisers/page.tsx
+
+### Change 1 - Line 434 (Table Cell Display)
+```diff
+- <TableCell>{advertiser.agency?.name || 'Direct'}</TableCell>
++ <TableCell>
++   {advertiser.agency?.name ? (
++     advertiser.agency.name
++   ) : (
++     <Typography variant="body2" color="text.secondary" fontStyle="italic">
++       No agency assigned
++     </Typography>
++   )}
++ </TableCell>
+```
+
+### Change 2 - Line 668 (Dropdown Menu)
+```diff
+- <MenuItem value="">Direct (No Agency)</MenuItem>
++ <MenuItem value="">No Agency (Independent)</MenuItem>
+```
+
+## File: /src/components/budget/UnifiedBudgetPlanning.tsx
+
+### Change - Line 1953
+```diff
+- {advertiserData.agency ? `via ${advertiserData.agency.name}` : 'Direct'} • Seller: {advertiserData.seller.name}
++ {advertiserData.agency ? `via ${advertiserData.agency.name}` : 'Independent'} • Seller: {advertiserData.seller.name}
+```
+
+## File: /src/app/api/campaigns/[id]/schedule/export/route.ts
+
+### Change - Line 75
+```diff
+- ['Agency:', schedule.agencyName || 'Direct'],
++ ['Agency:', schedule.agencyName || 'No Agency'],
+```
+
+## File: /src/app/api/reports/custom/route.ts
+
+### Change - Line 415
+```diff
+- row[dim] = campaign.agency?.name || 'Direct'
++ row[dim] = campaign.agency?.name || 'No Agency'
+```
+
+## File: /src/app/api/advertisers/route.ts
+
+### Change - Lines 176-197 (Validation Enhancement)
+```diff
+  const body = await request.json()
+- const { name, email, phone, industry, website, address, agencyId } = body
++ let { name, email, phone, industry, website, address, agencyId } = body
+
+  // Validate required fields
+- if (!name) {
++ if (!name || name.trim() === '') {
+    return NextResponse.json(
+-     { error: 'Name is required' },
++     { error: 'Advertiser name is required and cannot be blank' },
+      { status: 400 }
+    )
+  }
++
++ // Normalize agency ID - convert empty string to null
++ if (agencyId === '') {
++   agencyId = null
++ }
++
++ // Validate email format if provided
++ if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
++   return NextResponse.json(
++     { error: 'Invalid email format' },
++     { status: 400 }
++   )
++ }
+```

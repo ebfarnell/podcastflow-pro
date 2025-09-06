@@ -1,0 +1,955 @@
+'use client'
+
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
+import { useState, useEffect } from 'react'
+import { useRouter, useParams } from 'next/navigation'
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  Grid,
+  Card,
+  CardContent,
+  Chip,
+  IconButton,
+  Tabs,
+  Tab,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Avatar,
+  Divider,
+  LinearProgress,
+  Menu,
+  MenuItem,
+} from '@mui/material'
+import {
+  ArrowBack,
+  Edit,
+  MoreVert,
+  PlayCircle,
+  Download,
+  Schedule,
+  AttachMoney,
+  People,
+  Assessment,
+  Mic,
+  AccessTime,
+  CalendarToday,
+  CheckCircle,
+  Campaign,
+  Share,
+  Delete,
+} from '@mui/icons-material'
+import { DashboardLayout } from '@/components/layout/DashboardLayout'
+import { AudioPlayer } from '@/components/audio/AudioPlayer'
+import { useAudio } from '@/contexts/AudioContext'
+import { LoadingState } from '@/components/common/LoadingState'
+import { ErrorState } from '@/components/common/ErrorState'
+import { useQuery } from '@tanstack/react-query'
+import { episodesApi } from '@/services/api'
+import { analyticsApiService } from '@/services/analytics-api'
+import { EpisodeInventory } from '@/components/episodes/EpisodeInventory'
+import { useAuth } from '@/contexts/AuthContext'
+import { parseApiError, getUserFriendlyErrorMessage, logApiError } from '@/lib/api/error-handler'
+
+interface Episode {
+  episodeId: string
+  showId: string
+  showName: string
+  number: number
+  title: string
+  description: string
+  duration: string
+  releaseDate: string
+  status: 'published' | 'scheduled' | 'draft' | 'recording'
+  downloads: number
+  listens: number
+  completionRate: number
+  avgListenTime: string
+  audioUrl: string
+  transcriptUrl?: string
+  explicit: boolean
+  tags: string[]
+  guests: string[]
+  adSlots: {
+    id: string
+    position: string
+    duration: number
+    advertiser: string
+    campaign: string
+    revenue: number
+    filled: boolean
+  }[]
+}
+
+function EpisodeDetailPageContent() {
+  // AGGRESSIVE REDIRECT BLOCKING FOR DEBUGGING
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      console.error('🛑 BLOCKING ALL REDIRECTS FOR DEBUGGING - NUCLEAR OPTION')
+      
+      // NUCLEAR OPTION: Stop all page loading immediately
+      window.stop()
+      console.error('🛑 Called window.stop() to halt all page loading')
+      
+      // Override router.push to log but not redirect
+      const originalPush = window.history.pushState
+      window.history.pushState = function(...args) {
+        console.error('🛑 BLOCKED pushState redirect to:', args)
+        debugLog('🛑 BLOCKED pushState', { args })
+        window.stop() // Stop again if something tries
+        // Don't actually redirect
+      }
+      
+      // Override replaceState too
+      const originalReplace = window.history.replaceState
+      window.history.replaceState = function(...args) {
+        console.error('🛑 BLOCKED replaceState redirect to:', args)
+        debugLog('🛑 BLOCKED replaceState', { args })
+        window.stop() // Stop again if something tries
+        // Don't actually redirect
+      }
+      
+      // Try to override window.location (may fail but that's OK)
+      try {
+        Object.defineProperty(window, 'location', {
+          get: function() {
+            return document.location
+          },
+          set: function(val) {
+            console.error('🛑 BLOCKED window.location redirect to:', val)
+            debugLog('🛑 BLOCKED window.location', { target: val })
+            window.stop() // Stop again if something tries
+            // Don't actually redirect
+          },
+          configurable: true
+        })
+      } catch (e) {
+        console.log('Could not override window.location (already defined), but that\'s OK')
+      }
+      
+      // Override location methods
+      window.location.assign = function(url) {
+        console.error('🛑 BLOCKED location.assign to:', url)
+        debugLog('🛑 BLOCKED location.assign', { url })
+        window.stop()
+      }
+      
+      window.location.replace = function(url) {
+        console.error('🛑 BLOCKED location.replace to:', url)  
+        debugLog('🛑 BLOCKED location.replace', { url })
+        window.stop()
+      }
+      
+      window.location.reload = function() {
+        console.error('🛑 BLOCKED location.reload')
+        debugLog('🛑 BLOCKED location.reload', {})
+        window.stop()
+      }
+      
+      // Set a flag to tell DashboardLayout not to redirect
+      window.DISABLE_AUTH_REDIRECT = true
+      
+      // Override Next.js router too
+      if ((window as any).next?.router) {
+        const nextRouter = (window as any).next.router
+        nextRouter.push = function(url: string) {
+          console.error('🛑 BLOCKED Next.js router.push to:', url)
+          debugLog('🛑 BLOCKED Next router.push', { url })
+          window.stop()
+        }
+        nextRouter.replace = function(url: string) {
+          console.error('🛑 BLOCKED Next.js router.replace to:', url)
+          debugLog('🛑 BLOCKED Next router.replace', { url })
+          window.stop()
+        }
+      }
+    }
+  }, [])
+
+  // Create a debug logger that persists to localStorage
+  const debugLog = (message: string, data?: any) => {
+    const timestamp = new Date().toISOString()
+    const logEntry = {
+      timestamp,
+      page: 'episode-detail',
+      message,
+      data: data ? JSON.stringify(data) : undefined,
+      url: typeof window !== 'undefined' ? window.location.href : 'unknown'
+    }
+    
+    // Log to console
+    console.log(`[${timestamp}] ${message}`, data || '')
+    
+    // Persist to localStorage
+    if (typeof window !== 'undefined') {
+      const existingLogs = JSON.parse(localStorage.getItem('podcastflow-debug-logs') || '[]')
+      existingLogs.push(logEntry)
+      // Keep only last 100 logs
+      if (existingLogs.length > 100) {
+        existingLogs.shift()
+      }
+      localStorage.setItem('podcastflow-debug-logs', JSON.stringify(existingLogs))
+    }
+  }
+
+  // Immediate debug - this should run as soon as component loads
+  if (typeof window !== 'undefined') {
+    debugLog('🚨 EPISODE PAGE LOADED', {
+      location: window.location.href,
+      cookies: document.cookie,
+      referrer: document.referrer
+    })
+  }
+  
+  const router = useRouter()
+  const params = useParams()
+  const episodeId = params.id as string
+  const { play } = useAudio()
+  const { user, isLoading: authLoading } = useAuth()
+
+  const [selectedTab, setSelectedTab] = useState(0)
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [authenticatedUser, setAuthenticatedUser] = useState<any>(null)
+
+  // Do a direct auth check via API first (bypasses context issues)
+  useEffect(() => {
+    debugLog('🎬 Starting direct auth check', {
+      episodeId,
+      cookies: document.cookie
+    })
+    
+    // Always verify auth via API on mount
+    fetch('/api/auth/check', {
+      method: 'GET',
+      credentials: 'include', // Ensure cookies are sent
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    })
+      .then(res => {
+        const responseInfo = {
+          status: res.status,
+          ok: res.ok,
+          statusText: res.statusText,
+          url: res.url
+        }
+        debugLog('🎬 Auth response received', responseInfo)
+        return res.json().then(data => ({ data, responseInfo }))
+      })
+      .then(({ data, responseInfo }) => {
+        debugLog('🎬 Auth check response data', {
+          authenticated: data.authenticated,
+          user: data.user,
+          error: data.error,
+          fullResponse: data
+        })
+        
+        if (data.authenticated === true) {
+          debugLog('✅ Authentication successful', {
+            email: data.user?.email,
+            role: data.user?.role
+          })
+          setAuthenticatedUser(data.user)
+          setAuthChecked(true)
+        } else {
+          debugLog('❌ Authentication failed', {
+            response: data,
+            willRedirect: false // We're disabling redirect for now
+          })
+          
+          // STOP THE REDIRECT - Block it completely for debugging
+          debugLog('🚨 BLOCKING REDIRECT FOR DEBUG - Check localStorage for logs')
+          
+          // Don't redirect at all - just set auth checked
+          setAuthChecked(true)
+          
+          // Show a non-blocking alert
+          if (typeof window !== 'undefined') {
+            const logs = localStorage.getItem('podcastflow-debug-logs')
+            console.error('🔴 AUTH FAILED - Debug logs saved to localStorage')
+            console.error('🔴 To view logs, run in console: JSON.parse(localStorage.getItem("podcastflow-debug-logs"))')
+          }
+        }
+      })
+      .catch(err => {
+        debugLog('🔴 Auth check error', {
+          message: err.message,
+          stack: err.stack,
+          error: err.toString()
+        })
+        
+        // Don't redirect on error either
+        debugLog('🚨 ERROR - BLOCKING REDIRECT FOR DEBUG')
+        setAuthChecked(true)
+      })
+  }, [episodeId])
+
+  // Skip context-based auth check if direct check passed
+  useEffect(() => {
+    if (authChecked) {
+      console.log('🎬 Episode Detail Page - Skipping context check, already authenticated')
+      return
+    }
+    
+    // Only use context as fallback if direct check hasn't completed
+    if (!authLoading && !user) {
+      console.log('🎬 Episode Detail Page - Context shows no user, but waiting for direct check')
+    }
+  }, [user, authLoading, authChecked])
+
+  // Fetch episode details
+  const { data: episode, isLoading, error } = useQuery({
+    queryKey: ['episode', episodeId],
+    queryFn: async () => {
+      console.log('🎬 Fetching episode:', episodeId)
+      try {
+        const result = await episodesApi.getEpisode(episodeId)
+        console.log('🎬 Episode API response:', result)
+        if (!result) {
+          throw new Error('Episode not found')
+        }
+        // Transform the response to match the expected format
+        return {
+          episodeId: result.id,
+          showId: result.showId,
+          showName: result.show,
+          number: result.episodeNumber || 0,
+          title: result.title,
+          description: result.description || '',
+          duration: result.duration,
+          releaseDate: result.publishDate || result.scheduledDate || result.createdAt,
+          status: result.status,
+          downloads: result.downloads,
+          listens: result.downloads, // Using downloads as listens for now
+          completionRate: 0,
+          avgListenTime: '0:00',
+          audioUrl: result.audioUrl || '',
+          transcriptUrl: result.transcriptUrl,
+          explicit: false,
+          tags: result.tags || [],
+          guests: [],
+          adSlots: []
+        }
+      } catch (err) {
+        console.error('🎬 Episode fetch error:', err)
+        throw err
+      }
+    },
+    enabled: !!episodeId, // Temporarily removed user requirement for debugging
+    retry: 1
+  })
+
+  // Fetch real analytics data
+  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['episode-analytics', episodeId],
+    queryFn: () => analyticsApiService.getEpisodeAnalytics(episodeId, { period: '30d' }),
+    enabled: !!episodeId,
+    staleTime: 5 * 60 * 1000
+  })
+
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget)
+  }
+
+  const handleMenuClose = () => {
+    setAnchorEl(null)
+  }
+
+  const totalAdRevenue = analytics?.totalRevenue || 0
+
+  // Show loading while auth is being checked via direct API call
+  if (!authChecked) {
+    return (
+      <DashboardLayout>
+        <LoadingState 
+          message="Loading episode..." 
+          variant="detailed" 
+          height="60vh"
+        />
+      </DashboardLayout>
+    )
+  }
+
+  // Show loading while episode data is being fetched
+  if (isLoading || analyticsLoading) {
+    return (
+      <DashboardLayout>
+        <LoadingState 
+          message="Loading episode details..." 
+          variant="detailed" 
+          height="60vh"
+        />
+      </DashboardLayout>
+    )
+  }
+
+  if (error || !episode) {
+    let errorTitle = "Episode Not Available"
+    let errorMessage = "Unable to load episode details."
+    
+    if (error) {
+      const apiError = parseApiError(error)
+      
+      if (apiError.isNotFound) {
+        errorMessage = "This episode was not found. It may have been deleted or you may not have permission to view it."
+      } else if (apiError.isPermissionError) {
+        errorMessage = "You do not have permission to view this episode."
+        errorTitle = "Access Denied"
+      } else if (apiError.isServerError) {
+        errorMessage = "A server error occurred while loading the episode. Please try again later."
+        errorTitle = "Server Error"
+      } else {
+        errorMessage = getUserFriendlyErrorMessage(apiError)
+      }
+    }
+      
+    return (
+      <DashboardLayout>
+        <ErrorState
+          title={errorTitle}
+          message={errorMessage}
+          backUrl="/episodes"
+          onRetry={() => window.location.reload()}
+          height="60vh"
+        />
+      </DashboardLayout>
+    )
+  }
+
+  // Don't render DashboardLayout until we've confirmed authentication
+  // This prevents DashboardLayout from redirecting before our auth check completes
+  if (!authChecked) {
+    return (
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        flexDirection: 'column',
+        gap: 2
+      }}>
+        <LinearProgress sx={{ width: 200 }} />
+        <Typography>Verifying authentication...</Typography>
+      </Box>
+    )
+  }
+
+  return (
+    <DashboardLayout>
+        <Box sx={{ mb: 4 }}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+            <IconButton onClick={() => router.push(`/shows/${episode.showId}`)} sx={{ mr: 2 }}>
+              <ArrowBack />
+            </IconButton>
+            <Box sx={{ flexGrow: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography variant="h4" component="h1">
+                  Episode #{episode.number}: {episode.title}
+                </Typography>
+                <Chip
+                  label={episode.status}
+                  color={episode.status === 'published' ? 'success' : 'default'}
+                  size="small"
+                  icon={episode.status === 'published' ? <CheckCircle /> : <Schedule />}
+                />
+              </Box>
+              <Typography variant="body1" color="text.secondary">
+                {episode.showName} • Released {new Date(episode.releaseDate).toLocaleDateString()}
+              </Typography>
+            </Box>
+            <Button
+              variant="outlined"
+              startIcon={<Edit />}
+              onClick={() => router.push(`/episodes/${episodeId}/edit`)}
+              sx={{ mr: 1 }}
+            >
+              Edit
+            </Button>
+            <IconButton onClick={handleMenuOpen}>
+              <MoreVert />
+            </IconButton>
+          </Box>
+
+          {/* Key Metrics */}
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        Downloads
+                      </Typography>
+                      <Typography variant="h5">
+                        {analytics?.totalDownloads?.toLocaleString() || '0'}
+                      </Typography>
+                      <Typography variant="body2" color={analytics?.trends?.downloadsChange >= 0 ? 'success.main' : 'error.main'}>
+                        {analytics?.trends?.downloadsChange > 0 ? '+' : ''}{analytics?.trends?.downloadsChange?.toFixed(1) || '0'}% vs previous
+                      </Typography>
+                    </Box>
+                    <Download color="primary" sx={{ fontSize: 40, opacity: 0.3 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        Listens
+                      </Typography>
+                      <Typography variant="h5">
+                        {analytics?.totalListeners?.toLocaleString() || '0'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {analytics?.avgCompletionRate?.toFixed(1) || '0'}% completion
+                      </Typography>
+                    </Box>
+                    <PlayCircle color="info" sx={{ fontSize: 40, opacity: 0.3 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        Ad Revenue
+                      </Typography>
+                      <Typography variant="h5">
+                        ${totalAdRevenue?.toLocaleString() || '0'}
+                      </Typography>
+                      <Typography variant="body2" color={analytics?.trends?.revenueChange >= 0 ? 'success.main' : 'error.main'}>
+                        {analytics?.trends?.revenueChange > 0 ? '+' : ''}{analytics?.trends?.revenueChange?.toFixed(1) || '0'}% vs previous
+                      </Typography>
+                    </Box>
+                    <AttachMoney color="success" sx={{ fontSize: 40, opacity: 0.3 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        Avg Listen Time
+                      </Typography>
+                      <Typography variant="h5">
+                        {Math.floor((analytics?.engagement?.avgListenTime || 0) / 60)}:{String(Math.floor((analytics?.engagement?.avgListenTime || 0) % 60)).padStart(2, '0')}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        avg listen time
+                      </Typography>
+                    </Box>
+                    <AccessTime color="warning" sx={{ fontSize: 40, opacity: 0.3 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          {/* Tabs */}
+          <Paper sx={{ mb: 3 }}>
+            <Tabs
+              value={selectedTab}
+              onChange={(e, value) => setSelectedTab(value)}
+              sx={{ borderBottom: 1, borderColor: 'divider' }}
+            >
+              <Tab label="Overview" />
+              <Tab label="Ad Performance" />
+              <Tab label="Inventory" />
+              <Tab label="Analytics" />
+            </Tabs>
+          </Paper>
+
+          {/* Tab Content */}
+          {selectedTab === 0 && (
+            <Grid container spacing={3}>
+              {/* Episode Details */}
+              <Grid item xs={12} md={8}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Episode Details
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Description
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {episode.description || 'No description available'}
+                      </Typography>
+                    </Box>
+
+                    {episode.guests.length > 0 && (
+                      <Box sx={{ mb: 3 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Guests
+                        </Typography>
+                        <List dense>
+                          {episode.guests.map((guest, index) => (
+                            <ListItem key={index}>
+                              <ListItemIcon>
+                                <Avatar sx={{ width: 32, height: 32 }}>
+                                  <Mic fontSize="small" />
+                                </Avatar>
+                              </ListItemIcon>
+                              <ListItemText primary={guest} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </Box>
+                    )}
+
+                    {episode.tags.length > 0 && (
+                      <Box sx={{ mb: 3 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Tags
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          {episode.tags.map((tag) => (
+                            <Chip key={tag} label={tag} size="small" />
+                          ))}
+                        </Box>
+                      </Box>
+                    )}
+
+                    {episode.audioUrl && (
+                      <Box sx={{ mt: 3 }}>
+                        <AudioPlayer
+                          src={episode.audioUrl}
+                          title={episode.title}
+                          subtitle={`${episode.showName} - Episode #${episode.number}`}
+                          coverImage="/podcast-cover.jpg"
+                        />
+                        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                          <Button 
+                            variant="outlined" 
+                            fullWidth
+                            onClick={() => play({
+                              src: episode.audioUrl,
+                              title: episode.title,
+                              subtitle: `${episode.showName} - Episode #${episode.number}`,
+                              coverImage: '/podcast-cover.jpg'
+                            })}
+                          >
+                            Play in Mini Player
+                          </Button>
+                        </Box>
+                      </Box>
+                    )}
+                    
+                    {episode.transcriptUrl && (
+                      <Box sx={{ mt: 2 }}>
+                        <Button variant="outlined" fullWidth>
+                          View Transcript
+                        </Button>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Episode Info */}
+              <Grid item xs={12} md={4}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Episode Information
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    
+                    <List dense>
+                      <ListItem>
+                        <ListItemText
+                          primary="Duration"
+                          secondary={episode.duration}
+                        />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemText
+                          primary="Release Date"
+                          secondary={new Date(episode.releaseDate).toLocaleString()}
+                        />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemText
+                          primary="Explicit Content"
+                          secondary={episode.explicit ? 'Yes' : 'No'}
+                        />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemText
+                          primary="Status"
+                          secondary={episode.status}
+                        />
+                      </ListItem>
+                    </List>
+                  </CardContent>
+                </Card>
+
+                <Card sx={{ mt: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Engagement Metrics
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    
+                    <Box sx={{ mb: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="body2">Completion Rate</Typography>
+                        <Typography variant="body2" fontWeight="bold">
+                          {analytics?.avgCompletionRate?.toFixed(1) || '0'}%
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={analytics?.avgCompletionRate || 0}
+                        sx={{ height: 8, borderRadius: 4 }}
+                      />
+                    </Box>
+
+                    <Box sx={{ mb: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="body2">Listen Rate</Typography>
+                        <Typography variant="body2" fontWeight="bold">
+                          {analytics?.totalDownloads > 0 ? Math.round((analytics?.totalListeners / analytics?.totalDownloads) * 100) : 0}%
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={analytics?.totalDownloads > 0 ? (analytics?.totalListeners / analytics?.totalDownloads) * 100 : 0}
+                        sx={{ height: 8, borderRadius: 4 }}
+                        color="secondary"
+                      />
+                    </Box>
+
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Platform Breakdown
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="body2">Spotify</Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            {analytics?.platformBreakdown?.spotify?.toLocaleString() || '0'}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="body2">Apple Podcasts</Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            {analytics?.platformBreakdown?.apple?.toLocaleString() || '0'}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="body2">Google Podcasts</Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            {analytics?.platformBreakdown?.google?.toLocaleString() || '0'}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="body2">Other</Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            {analytics?.platformBreakdown?.other?.toLocaleString() || '0'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          )}
+
+          {selectedTab === 1 && (
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Ad Slot Performance
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    
+                    {episode.adSlots && episode.adSlots.length > 0 ? (
+                      <>
+                        <List>
+                          {episode.adSlots.map((slot) => (
+                            <ListItem
+                              key={slot.id}
+                              sx={{
+                                border: 1,
+                                borderColor: 'divider',
+                                borderRadius: 1,
+                                mb: 1,
+                                bgcolor: slot.filled ? 'success.50' : 'grey.50'
+                              }}
+                            >
+                              <ListItemIcon>
+                                <Avatar sx={{ bgcolor: slot.filled ? 'success.main' : 'grey.400' }}>
+                                  <Campaign />
+                                </Avatar>
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    <Typography variant="subtitle1">
+                                      {slot.position}
+                                    </Typography>
+                                    <Chip label={`${slot.duration}s`} size="small" />
+                                    {slot.filled && (
+                                      <Chip label="Filled" size="small" color="success" />
+                                    )}
+                                  </Box>
+                                }
+                                secondary={
+                                  slot.filled ? (
+                                    <Box>
+                                      <Typography variant="body2">
+                                        {slot.advertiser} - {slot.campaign}
+                                      </Typography>
+                                      <Typography variant="body2" color="success.main">
+                                        Revenue: ${slot.revenue}
+                                      </Typography>
+                                    </Box>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                      Available for booking
+                                    </Typography>
+                                  )
+                                }
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+
+                        <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+                          <Typography variant="subtitle1" gutterBottom>
+                            Revenue Summary
+                          </Typography>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography variant="body2">Total Ad Revenue:</Typography>
+                            <Typography variant="body2" fontWeight="bold" color="success.main">
+                              ${totalAdRevenue.toLocaleString()}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="body2">Fill Rate:</Typography>
+                            <Typography variant="body2" fontWeight="bold">
+                              {episode.adSlots.length > 0 ? Math.round((episode.adSlots.filter(s => s.filled).length / episode.adSlots.length) * 100) : 0}%
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </>
+                    ) : (
+                      <Box sx={{ textAlign: 'center', py: 4 }}>
+                        <Typography variant="body1" color="text.secondary">
+                          No ad slots configured for this episode
+                        </Typography>
+                        <Button variant="outlined" sx={{ mt: 2 }}>
+                          Add Ad Slots
+                        </Button>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          )}
+
+          {selectedTab === 2 && (
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <EpisodeInventory 
+                  episodeId={episodeId} 
+                  canEdit={user?.role && ['master', 'admin', 'sales', 'producer'].includes(user.role)}
+                />
+              </Grid>
+            </Grid>
+          )}
+
+          {selectedTab === 3 && (
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Analytics Dashboard
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    <Box sx={{ textAlign: 'center', py: 4 }}>
+                      <Typography variant="body1" color="text.secondary">
+                        Detailed analytics coming soon
+                      </Typography>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Action Menu */}
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleMenuClose}
+          >
+            <MenuItem onClick={() => {
+              handleMenuClose()
+              // Handle share
+            }}>
+              <Share fontSize="small" sx={{ mr: 1 }} />
+              Share Episode
+            </MenuItem>
+            <MenuItem onClick={() => {
+              handleMenuClose()
+              // Handle duplicate
+            }}>
+              <Campaign fontSize="small" sx={{ mr: 1 }} />
+              Manage Ad Slots
+            </MenuItem>
+            <MenuItem onClick={() => {
+              handleMenuClose()
+              // Handle analytics
+            }}>
+              <Assessment fontSize="small" sx={{ mr: 1 }} />
+              Download Analytics
+            </MenuItem>
+            <Divider />
+            <MenuItem 
+              onClick={() => {
+                handleMenuClose()
+                // Handle delete
+              }}
+              sx={{ color: 'error.main' }}
+            >
+              <Delete fontSize="small" sx={{ mr: 1 }} />
+              Delete Episode
+            </MenuItem>
+          </Menu>
+        </Box>
+      </DashboardLayout>
+  )
+}
+
+// Export directly without RouteProtection wrapper
+// The middleware already handles authentication for this route
+export default function EpisodeDetailPage() {
+  return <EpisodeDetailPageContent />
+}

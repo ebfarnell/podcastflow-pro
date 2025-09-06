@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# Local PostgreSQL Setup for Testing/Development
+# For production, use AWS RDS or similar managed service
+
+echo "🐘 Setting up local PostgreSQL for PodcastFlow Pro..."
+
+# Colors
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+print_status() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+# Check if running on Amazon Linux 2023
+if ! grep -q "Amazon Linux" /etc/os-release; then
+    print_warning "This script is designed for Amazon Linux 2023"
+fi
+
+# Install PostgreSQL 15
+print_status "Installing PostgreSQL 15..."
+sudo dnf install postgresql15 postgresql15-server -y
+
+# Initialize PostgreSQL
+print_status "Initializing PostgreSQL database..."
+sudo postgresql-setup --initdb
+
+# Enable and start PostgreSQL
+print_status "Starting PostgreSQL service..."
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
+
+# Create database and user
+print_status "Creating database and user..."
+sudo -u postgres psql << EOF
+CREATE USER podcastflow WITH PASSWORD 'podcastflow123';
+CREATE DATABASE podcastflow OWNER podcastflow;
+GRANT ALL PRIVILEGES ON DATABASE podcastflow TO podcastflow;
+EOF
+
+# Update PostgreSQL configuration for local connections
+print_status "Configuring PostgreSQL for local connections..."
+sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = 'localhost'/" /var/lib/pgsql/data/postgresql.conf
+
+# Update pg_hba.conf for password authentication
+sudo bash -c "echo 'host    podcastflow     podcastflow     127.0.0.1/32            md5' >> /var/lib/pgsql/data/pg_hba.conf"
+
+# Restart PostgreSQL
+print_status "Restarting PostgreSQL..."
+sudo systemctl restart postgresql
+
+# Create local .env file
+print_status "Creating local .env configuration..."
+cat > .env.local << EOF
+# Local PostgreSQL Database
+DATABASE_URL="postgresql://podcastflow:podcastflow123@localhost:5432/podcastflow"
+
+# Authentication
+NEXTAUTH_SECRET="local-development-secret-key-change-in-production"
+
+# AWS Configuration (use existing)
+AWS_REGION="${AWS_REGION:-us-west-2}"
+AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+S3_BUCKET_NAME="${S3_BUCKET_NAME:-podcastflow-pro-uploads}"
+
+# Email (local testing)
+EMAIL_FROM="noreply@localhost"
+EMAIL_HOST="localhost"
+EMAIL_PORT="1025"
+EMAIL_USER=""
+EMAIL_PASSWORD=""
+
+# Application
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+EOF
+
+print_status "PostgreSQL setup completed!"
+echo ""
+echo "Database Details:"
+echo "  Host: localhost"
+echo "  Port: 5432"
+echo "  Database: podcastflow"
+echo "  Username: podcastflow"
+echo "  Password: podcastflow123"
+echo ""
+echo "Connection string:"
+echo "  postgresql://podcastflow:podcastflow123@localhost:5432/podcastflow"
+echo ""
+print_warning "This is for local testing only. Use AWS RDS for production!"
+echo ""
+echo "Next steps:"
+echo "1. Copy .env.local to .env: cp .env.local .env"
+echo "2. Run database setup: npm run db:setup"
+echo "3. Start the application: npm run dev"

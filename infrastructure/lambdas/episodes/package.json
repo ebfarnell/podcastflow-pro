@@ -1,0 +1,9 @@
+{
+  "name": "podcastflow-episodes",
+  "version": "1.0.0",
+  "description": "Episodes management Lambda for PodcastFlow Pro",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1472.0"
+  }
+}

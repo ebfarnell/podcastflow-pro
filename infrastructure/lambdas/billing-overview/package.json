@@ -1,0 +1,9 @@
+{
+  "name": "billing-overview-lambda",
+  "version": "1.0.0",
+  "description": "Billing overview Lambda function",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1404.0"
+  }
+}

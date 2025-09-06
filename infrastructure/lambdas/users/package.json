@@ -1,0 +1,9 @@
+{
+  "name": "users-lambda",
+  "version": "1.0.0",
+  "description": "User management Lambda function for PodcastFlow Pro",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1404.0"
+  }
+}

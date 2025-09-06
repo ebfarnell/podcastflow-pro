@@ -1,0 +1,10 @@
+{
+  "name": "api-webhooks-lambda",
+  "version": "1.0.0",
+  "description": "API keys and webhooks management Lambda function",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1000.0",
+    "axios": "^1.3.0"
+  }
+}

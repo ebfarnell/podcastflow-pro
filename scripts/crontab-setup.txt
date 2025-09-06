@@ -1,0 +1,7 @@
+# PodcastFlow Pro Cron Jobs
+
+# YouTube Daily Sync - Run at 2:00 AM every day
+0 2 * * * /home/ec2-user/podcastflow-pro/scripts/youtube-daily-sync.sh
+
+# YouTube Hourly Sync (for organizations with hourly sync enabled) - Run every hour at :30
+# 30 * * * * /home/ec2-user/podcastflow-pro/scripts/youtube-hourly-sync.sh

@@ -1,0 +1,562 @@
+
+> podcastflow-pro@1.0.0 build
+> ./scripts/optimize-build.sh && ./scripts/build-wrapper.sh && ./scripts/post-build.sh
+
+🚀 Optimizing Next.js build process...
+📝 Fixing dynamic route exports...
+Fixing dynamic route exports...
+✅ Fixed 0 files with missing dynamic exports
+Checking pages for dynamic rendering issues...
+✅ Dynamic route fixes complete!
+🧹 Cleaning old build artifacts...
+✅ Build optimizations complete!
+
+To build with optimizations, run:
+  npm run build
+[0;32m🏗️  Next.js Build Wrapper[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2025-08-21 19:45:33] Build configuration:
+[2025-08-21 19:45:33]   Timeout: 600 seconds
+[2025-08-21 19:45:33]   Node options: --max-old-space-size=4096
+[2025-08-21 19:45:33]   Node version: v20.19.2
+[2025-08-21 19:45:33]   NPM version: 10.8.2
+[2025-08-21 19:45:34]   Next.js version: Next.js v15.4.3
+[2025-08-21 19:45:34]   Working directory: /home/ec2-user/podcastflow-pro
+[2025-08-21 19:45:34]   Timeout command: /usr/bin/timeout
+[2025-08-21 19:45:34]   Timeout version: timeout (GNU coreutils) 8.32
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2025-08-21 19:45:34] Build started at Thu Aug 21 19:45:34 UTC 2025
+[1;33m⏳ Starting Next.js build (timeout: 600s)...[0m
+   ▲ Next.js 15.4.3
+   - Environments: .env.local, .env.production, .env
+
+   Creating an optimized production build ...
+ ⚠ Compiled with warnings in 2.0min
+
+./node_modules/handlebars/lib/index.js
+require.extensions is not supported by webpack. Use a loader instead.
+
+Import trace for requested module:
+./node_modules/handlebars/lib/index.js
+./src/services/email/template-service.ts
+./src/app/api/organization/email-templates/route.ts
+
+./node_modules/handlebars/lib/index.js
+require.extensions is not supported by webpack. Use a loader instead.
+
+Import trace for requested module:
+./node_modules/handlebars/lib/index.js
+./src/services/email/template-service.ts
+./src/app/api/organization/email-templates/route.ts
+
+./node_modules/handlebars/lib/index.js
+require.extensions is not supported by webpack. Use a loader instead.
+
+Import trace for requested module:
+./node_modules/handlebars/lib/index.js
+./src/services/email/template-service.ts
+./src/app/api/organization/email-templates/route.ts
+
+   Skipping validation of types
+   Linting ...
+   Collecting page data ...
+🚀 Real-time analytics pipeline started
+   Generating static pages (0/153) ...
+   Generating static pages (38/153) 
+   Generating static pages (76/153) 
+   Generating static pages (114/153) 
+ ✓ Generating static pages (153/153)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                     Size  First Load JS
+┌ ○ /                                                          892 B         140 kB
+├ ○ /_not-found                                              1.14 kB         103 kB
+├ ○ /accept-invitation                                       9.98 kB         196 kB
+├ ○ /activities                                              6.03 kB        1.66 MB
+├ ○ /ad-copy                                                 4.68 kB        1.67 MB
+├ ƒ /ad-copy/[id]/edit                                       6.77 kB        1.66 MB
+├ ○ /admin/approvals                                         13.9 kB         1.7 MB
+├ ○ /admin/email-analytics                                   17.5 kB        1.81 MB
+├ ○ /admin/email-monitoring                                  6.47 kB        1.66 MB
+├ ○ /admin/permissions                                       15.9 kB        1.66 MB
+├ ○ /admin/users                                              8.9 kB        1.66 MB
+├ ○ /admin/users/import                                      7.45 kB        1.65 MB
+├ ○ /advertisers                                             6.52 kB        1.67 MB
+├ ƒ /advertisers/[id]                                        5.53 kB        1.65 MB
+├ ƒ /advertisers/[id]/campaigns                              3.99 kB        1.66 MB
+├ ƒ /advertisers/[id]/edit                                   4.18 kB        1.66 MB
+├ ○ /agencies                                                8.05 kB        1.67 MB
+├ ƒ /agencies/[id]                                           11.8 kB        1.74 MB
+├ ƒ /agencies/[id]/campaigns                                 6.27 kB        1.67 MB
+├ ƒ /agencies/[id]/edit                                      3.14 kB        1.66 MB
+├ ○ /analytics                                               14.6 kB        2.03 MB
+├ ○ /analytics-detailed                                        428 B         102 kB
+├ ƒ /api/activities                                          1.14 kB         103 kB
+├ ƒ /api/ad-approvals                                        1.14 kB         103 kB
+├ ƒ /api/ad-approvals/[id]                                   1.14 kB         103 kB
+├ ƒ /api/ad-approvals/[id]/approve                           1.14 kB         103 kB
+├ ƒ /api/ad-approvals/[id]/reject                            1.14 kB         103 kB
+├ ƒ /api/ad-approvals/[id]/revision                          1.14 kB         103 kB
+├ ƒ /api/ad-approvals/[id]/submit                            1.14 kB         103 kB
+├ ƒ /api/ad-copy                                             1.14 kB         103 kB
+├ ƒ /api/ad-copy/[id]                                        1.14 kB         103 kB
+├ ƒ /api/ad-requests                                         1.14 kB         103 kB
+├ ƒ /api/ad-requests/[id]                                    1.14 kB         103 kB
+├ ƒ /api/admin/approvals                                     1.14 kB         103 kB
+├ ƒ /api/admin/audit/inventory                               1.14 kB         103 kB
+├ ƒ /api/admin/billing-automation                            1.14 kB         103 kB
+├ ƒ /api/admin/contract-templates                            1.14 kB         103 kB
+├ ƒ /api/admin/contract-templates/[id]                       1.14 kB         103 kB
+├ ƒ /api/admin/email-analytics                               1.14 kB         103 kB
+├ ƒ /api/admin/email-monitoring                              1.14 kB         103 kB
+├ ƒ /api/admin/fix/release-reservations                      1.14 kB         103 kB
+├ ƒ /api/admin/workflow-settings                             1.14 kB         103 kB
+├ ƒ /api/advertisers                                         1.14 kB         103 kB
+├ ƒ /api/advertisers/[id]                                    1.14 kB         103 kB
+├ ƒ /api/agencies                                            1.14 kB         103 kB
+├ ƒ /api/agencies/[id]                                       1.14 kB         103 kB
+├ ƒ /api/analytics                                           1.14 kB         103 kB
+├ ƒ /api/analytics/audience                                  1.14 kB         103 kB
+├ ƒ /api/analytics/audience/insights                         1.14 kB         103 kB
+├ ƒ /api/analytics/campaigns                                 1.14 kB         103 kB
+├ ƒ /api/analytics/episodes                                  1.14 kB         103 kB
+├ ƒ /api/analytics/episodes/[episodeId]                      1.14 kB         103 kB
+├ ƒ /api/analytics/episodes/[episodeId]/trends               1.14 kB         103 kB
+├ ƒ /api/analytics/events                                    1.14 kB         103 kB
+├ ƒ /api/analytics/kpis                                      1.14 kB         103 kB
+├ ƒ /api/analytics/performance                               1.14 kB         103 kB
+├ ƒ /api/analytics/rate-trends                               1.14 kB         103 kB
+├ ƒ /api/analytics/ratings                                   1.14 kB         103 kB
+├ ƒ /api/analytics/real-time                                 1.14 kB         103 kB
+├ ƒ /api/analytics/real-time/dashboard                       1.14 kB         103 kB
+├ ƒ /api/analytics/real-time/simulate                        1.14 kB         103 kB
+├ ƒ /api/analytics/real-time/subscribe                       1.14 kB         103 kB
+├ ƒ /api/analytics/real-time/updates                         1.14 kB         103 kB
+├ ƒ /api/analytics/revenue                                   1.14 kB         103 kB
+├ ƒ /api/analytics/shows                                     1.14 kB         103 kB
+├ ƒ /api/analytics/shows/[showId]                            1.14 kB         103 kB
+├ ƒ /api/analytics/shows/[showId]/trends                     1.14 kB         103 kB
+├ ƒ /api/audit/compliance                                    1.14 kB         103 kB
+├ ƒ /api/audit/export                                        1.14 kB         103 kB
+├ ƒ /api/audit/logs                                          1.14 kB         103 kB
+├ ƒ /api/audit/retention                                     1.14 kB         103 kB
+├ ƒ /api/auth/check                                          1.14 kB         103 kB
+├ ƒ /api/auth/login                                          1.14 kB         103 kB
+├ ƒ /api/auth/logout                                         1.14 kB         103 kB
+├ ƒ /api/auth/password-reset                                 1.14 kB         103 kB
+├ ƒ /api/auth/reset-password/confirm                         1.14 kB         103 kB
+├ ƒ /api/auth/reset-password/validate                        1.14 kB         103 kB
+├ ƒ /api/availability                                        1.14 kB         103 kB
+├ ƒ /api/backups                                             1.14 kB         103 kB
+├ ƒ /api/backups/restore                                     1.14 kB         103 kB
+├ ƒ /api/backups/schedule                                    1.14 kB         103 kB
+├ ƒ /api/billing                                             1.14 kB         103 kB
+├ ƒ /api/billing/automation/cycle                            1.14 kB         103 kB
+├ ƒ /api/billing/automation/pre-bill-approvals               1.14 kB         103 kB
+├ ƒ /api/billing/invoices                                    1.14 kB         103 kB
+├ ƒ /api/billing/pre-bill                                    1.14 kB         103 kB
+├ ƒ /api/billing/settings                                    1.14 kB         103 kB
+├ ƒ /api/billing/usage                                       1.14 kB         103 kB
+├ ƒ /api/budget/categories                                   1.14 kB         103 kB
+├ ƒ /api/budget/categories/[id]                              1.14 kB         103 kB
+├ ƒ /api/budget/comparison                                   1.14 kB         103 kB
+├ ƒ /api/budget/compensation                                 1.14 kB         103 kB
+├ ƒ /api/budget/entities                                     1.14 kB         103 kB
+├ ƒ /api/budget/entities/assignments                         1.14 kB         103 kB
+├ ƒ /api/budget/entries                                      1.14 kB         103 kB
+├ ƒ /api/budget/entries/[id]                                 1.14 kB         103 kB
+├ ƒ /api/budget/forecasts                                    1.14 kB         103 kB
+├ ƒ /api/budget/hierarchical                                 1.14 kB         103 kB
+├ ƒ /api/budget/hierarchical/[id]                            1.14 kB         103 kB
+├ ƒ /api/budget/hierarchical/batch                           1.14 kB         103 kB
+├ ƒ /api/budget/rollups/refresh                              1.14 kB         103 kB
+├ ƒ /api/cache-bust                                          1.14 kB         103 kB
+├ ƒ /api/cache/invalidate                                    1.14 kB         103 kB
+├ ƒ /api/calendar/events                                     1.14 kB         103 kB
+├ ƒ /api/campaigns                                           1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]                                      1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/analytics                            1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/analytics/real-time                  1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/approval                             1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/approve                              1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/billing                              1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/invoice                              1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/invoices                             1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/kpi                                  1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/kpi/[kpiId]                          1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/kpi/history                          1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/kpi/send-reminder                    1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/pre-bills                            1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/pre-bills/[preBillId]/download       1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/pre-bills/[preBillId]/email          1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/reject                               1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/schedule                             1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/schedule/export                      1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/timeline                             1.14 kB         103 kB
+├ ƒ /api/campaigns/[id]/versions                             1.14 kB         103 kB
+├ ƒ /api/campaigns/approvals                                 1.14 kB         103 kB
+├ ƒ /api/campaigns/approvals/[id]                            1.14 kB         103 kB
+├ ƒ /api/campaigns/billing/bulk                              1.14 kB         103 kB
+├ ƒ /api/campaigns/lost                                      1.14 kB         103 kB
+├ ƒ /api/categories                                          1.14 kB         103 kB
+├ ƒ /api/competitive-groups                                  1.14 kB         103 kB
+├ ƒ /api/contracts                                           1.14 kB         103 kB
+├ ƒ /api/contracts/[id]                                      1.14 kB         103 kB
+├ ƒ /api/contracts/[id]/actions                              1.14 kB         103 kB
+├ ƒ /api/contracts/download/[filename]                       1.14 kB         103 kB
+├ ƒ /api/contracts/templates                                 1.14 kB         103 kB
+├ ƒ /api/creative-requests                                   1.14 kB         103 kB
+├ ƒ /api/creative-requests/[id]                              1.14 kB         103 kB
+├ ƒ /api/creatives                                           1.14 kB         103 kB
+├ ƒ /api/creatives/[id]                                      1.14 kB         103 kB
+├ ƒ /api/creatives/[id]/duplicate                            1.14 kB         103 kB
+├ ƒ /api/creatives/[id]/usage                                1.14 kB         103 kB
+├ ƒ /api/creatives/search                                    1.14 kB         103 kB
+├ ƒ /api/cron/email-notifications                            1.14 kB         103 kB
+├ ƒ /api/cron/email-queue                                    1.14 kB         103 kB
+├ ƒ /api/cron/monthly-billing                                1.14 kB         103 kB
+├ ƒ /api/cron/quickbooks-sync                                1.14 kB         103 kB
+├ ƒ /api/dashboard                                           1.14 kB         103 kB
+├ ƒ /api/dashboard/revenue-projections                       1.14 kB         103 kB
+├ ƒ /api/debug-auth                                          1.14 kB         103 kB
+├ ƒ /api/deletion-requests                                   1.14 kB         103 kB
+├ ƒ /api/deletion-requests/[id]                              1.14 kB         103 kB
+├ ƒ /api/email/[id]                                          1.14 kB         103 kB
+├ ƒ /api/email/[id]/thread                                   1.14 kB         103 kB
+├ ƒ /api/email/all-emails                                    1.14 kB         103 kB
+├ ƒ /api/email/all-emails/export                             1.14 kB         103 kB
+├ ƒ /api/email/analytics                                     1.14 kB         103 kB
+├ ƒ /api/email/analytics/export                              1.14 kB         103 kB
+├ ƒ /api/email/track/click/[trackingId]                      1.14 kB         103 kB
+├ ƒ /api/email/track/open/[trackingId]                       1.14 kB         103 kB
+├ ƒ /api/episodes                                            1.14 kB         103 kB
+├ ƒ /api/episodes/[episodeId]                                1.14 kB         103 kB
+├ ƒ /api/episodes/[episodeId]/inventory                      1.14 kB         103 kB
+├ ƒ /api/executive/pl-report                                 1.14 kB         103 kB
+├ ƒ /api/executive/reports                                   1.14 kB         103 kB
+├ ƒ /api/executive/revenue-projections                       1.14 kB         103 kB
+├ ƒ /api/expenses                                            1.14 kB         103 kB
+├ ƒ /api/expenses/[id]                                       1.14 kB         103 kB
+├ ƒ /api/files/[id]                                          1.14 kB         103 kB
+├ ƒ /api/financial/summary                                   1.14 kB         103 kB
+├ ƒ /api/financials                                          1.14 kB         103 kB
+├ ƒ /api/financials/cashflow                                 1.14 kB         103 kB
+├ ƒ /api/financials/invoices                                 1.14 kB         103 kB
+├ ƒ /api/financials/payments                                 1.14 kB         103 kB
+├ ƒ /api/financials/transactions                             1.14 kB         103 kB
+├ ƒ /api/health                                              1.14 kB         103 kB
+├ ƒ /api/images/avatar                                       1.14 kB         103 kB
+├ ƒ /api/images/generate                                     1.14 kB         103 kB
+├ ƒ /api/integrations/[platform]/connect                     1.14 kB         103 kB
+├ ƒ /api/integrations/[platform]/disconnect                  1.14 kB         103 kB
+├ ƒ /api/integrations/[platform]/sync                        1.14 kB         103 kB
+├ ƒ /api/integrations/megaphone/setup                        1.14 kB         103 kB
+├ ƒ /api/integrations/status                                 1.14 kB         103 kB
+├ ƒ /api/inventory                                           1.14 kB         103 kB
+├ ƒ /api/inventory/alerts                                    1.14 kB         103 kB
+├ ƒ /api/inventory/enhanced                                  1.14 kB         103 kB
+├ ƒ /api/inventory/holds                                     1.14 kB         103 kB
+├ ƒ /api/inventory/subscribe                                 1.14 kB         103 kB
+├ ƒ /api/inventory/visibility                                1.14 kB         103 kB
+├ ƒ /api/invitations                                         1.14 kB         103 kB
+├ ƒ /api/invitations/accept                                  1.14 kB         103 kB
+├ ƒ /api/invitations/batch                                   1.14 kB         103 kB
+├ ƒ /api/kpi-update/[token]                                  1.14 kB         103 kB
+├ ƒ /api/master/analytics                                    1.14 kB         103 kB
+├ ƒ /api/master/analytics/export                             1.14 kB         103 kB
+├ ƒ /api/master/billing                                      1.14 kB         103 kB
+├ ƒ /api/master/billing/commissions                          1.14 kB         103 kB
+├ ƒ /api/master/billing/monthly-invoices                     1.14 kB         103 kB
+├ ƒ /api/master/billing/plans                                1.14 kB         103 kB
+├ ƒ /api/master/billing/plans/[planId]                       1.14 kB         103 kB
+├ ƒ /api/master/email-settings                               1.14 kB         103 kB
+├ ƒ /api/master/email-settings/metrics                       1.14 kB         103 kB
+├ ƒ /api/master/email-settings/suppression                   1.14 kB         103 kB
+├ ƒ /api/master/email-settings/suppression/[id]              1.14 kB         103 kB
+├ ƒ /api/master/email-settings/test                          1.14 kB         103 kB
+├ ƒ /api/master/expenses                                     1.14 kB         103 kB
+├ ƒ /api/master/invoices                                     1.14 kB         103 kB
+├ ƒ /api/master/invoices/[id]                                1.14 kB         103 kB
+├ ƒ /api/master/invoices/[id]/download                       1.14 kB         103 kB
+├ ƒ /api/master/invoices/generate                            1.14 kB         103 kB
+├ ƒ /api/master/invoices/generate-monthly                    1.14 kB         103 kB
+├ ƒ /api/master/organizations                                1.14 kB         103 kB
+├ ƒ /api/master/organizations/[organizationId]               1.14 kB         103 kB
+├ ƒ /api/master/organizations/[organizationId]/billing       1.14 kB         103 kB
+├ ƒ /api/master/payments                                     1.14 kB         103 kB
+├ ƒ /api/master/payments/[id]                                1.14 kB         103 kB
+├ ƒ /api/master/settings                                     1.14 kB         103 kB
+├ ƒ /api/master/users                                        1.14 kB         103 kB
+├ ƒ /api/master/users/[userId]                               1.14 kB         103 kB
+├ ƒ /api/master/users/[userId]/impersonate                   1.14 kB         103 kB
+├ ƒ /api/master/users/[userId]/status                        1.14 kB         103 kB
+├ ƒ /api/master/users/invite                                 1.14 kB         103 kB
+├ ƒ /api/megaphone/integration                               1.14 kB         103 kB
+├ ƒ /api/megaphone/networks                                  1.14 kB         103 kB
+├ ƒ /api/megaphone/podcasts                                  1.14 kB         103 kB
+├ ƒ /api/megaphone/sync                                      1.14 kB         103 kB
+├ ƒ /api/megaphone/sync-status                               1.14 kB         103 kB
+├ ƒ /api/megaphone/test-connection                           1.14 kB         103 kB
+├ ƒ /api/monitoring                                          1.14 kB         103 kB
+├ ƒ /api/monitoring/cron                                     1.14 kB         103 kB
+├ ƒ /api/monitoring/test                                     1.14 kB         103 kB
+├ ƒ /api/notifications                                       1.14 kB         103 kB
+├ ƒ /api/notifications/[notificationId]                      1.14 kB         103 kB
+├ ƒ /api/notifications/[notificationId]/read                 1.14 kB         103 kB
+├ ƒ /api/notifications/batch-delete                          1.14 kB         103 kB
+├ ƒ /api/notifications/batch-read                            1.14 kB         103 kB
+├ ƒ /api/notifications/preferences                           1.14 kB         103 kB
+├ ƒ /api/notifications/send                                  1.14 kB         103 kB
+├ ƒ /api/orders                                              1.14 kB         103 kB
+├ ƒ /api/orders/[id]                                         1.14 kB         103 kB
+├ ƒ /api/orders/schedule-integration                         1.14 kB         103 kB
+├ ƒ /api/orders/workflow                                     1.14 kB         103 kB
+├ ƒ /api/organization                                        1.14 kB         103 kB
+├ ƒ /api/organization/email-settings                         1.14 kB         103 kB
+├ ƒ /api/organization/email-templates                        1.14 kB         103 kB
+├ ƒ /api/organization/email-templates/[key]                  1.14 kB         103 kB
+├ ƒ /api/organization/email-templates/preview                1.14 kB         103 kB
+├ ƒ /api/organizations                                       1.14 kB         103 kB
+├ ƒ /api/organizations/[organizationId]                      1.14 kB         103 kB
+├ ƒ /api/organizations/[organizationId]/export               1.14 kB         103 kB
+├ ƒ /api/organizations/[organizationId]/provisioning-status  1.14 kB         103 kB
+├ ƒ /api/payments/history                                    1.14 kB         103 kB
+├ ƒ /api/payments/methods                                    1.14 kB         103 kB
+├ ƒ /api/payments/methods/[id]                               1.14 kB         103 kB
+├ ƒ /api/payments/process                                    1.14 kB         103 kB
+├ ƒ /api/pipeline                                            1.14 kB         103 kB
+├ ƒ /api/post-sale-dashboard                                 1.14 kB         103 kB
+├ ƒ /api/proposal-templates                                  1.14 kB         103 kB
+├ ƒ /api/proposals                                           1.14 kB         103 kB
+├ ƒ /api/proposals/[id]                                      1.14 kB         103 kB
+├ ƒ /api/proposals/[id]/approve                              1.14 kB         103 kB
+├ ƒ /api/proposals/[id]/email                                  940 B         600 kB
+├ ƒ /api/proposals/[id]/export                                 940 B         600 kB
+├ ƒ /api/proposals/[id]/reject                               1.14 kB         103 kB
+├ ƒ /api/proposals/[id]/restore-version                      1.14 kB         103 kB
+├ ƒ /api/proposals/[id]/submit-for-approval                  1.14 kB         103 kB
+├ ƒ /api/proposals/[id]/versions                             1.14 kB         103 kB
+├ ƒ /api/quickbooks/accounts                                 1.14 kB         103 kB
+├ ƒ /api/quickbooks/auth                                     1.14 kB         103 kB
+├ ƒ /api/quickbooks/batch                                    1.14 kB         103 kB
+├ ƒ /api/quickbooks/callback                                 1.14 kB         103 kB
+├ ƒ /api/quickbooks/cdc                                      1.14 kB         103 kB
+├ ƒ /api/quickbooks/customers                                1.14 kB         103 kB
+├ ƒ /api/quickbooks/customers/[id]                           1.14 kB         103 kB
+├ ƒ /api/quickbooks/export                                   1.14 kB         103 kB
+├ ƒ /api/quickbooks/financial-summary                        1.14 kB         103 kB
+├ ƒ /api/quickbooks/invoices                                 1.14 kB         103 kB
+├ ƒ /api/quickbooks/reports                                  1.14 kB         103 kB
+├ ƒ /api/quickbooks/sync-history                             1.14 kB         103 kB
+├ ƒ /api/quickbooks/webhook                                  1.14 kB         103 kB
+├ ƒ /api/rate-cards                                          1.14 kB         103 kB
+├ ƒ /api/reports/agency                                      1.14 kB         103 kB
+├ ƒ /api/reports/agency/test                                 1.14 kB         103 kB
+├ ƒ /api/reports/custom                                      1.14 kB         103 kB
+├ ƒ /api/reports/export                                      1.14 kB         103 kB
+├ ƒ /api/reports/financial/monthly                           1.14 kB         103 kB
+├ ƒ /api/reports/financial/pl                                1.14 kB         103 kB
+├ ƒ /api/reports/financial/quarterly                         1.14 kB         103 kB
+├ ƒ /api/reports/financial/tax                               1.14 kB         103 kB
+├ ƒ /api/reports/templates                                   1.14 kB         103 kB
+├ ƒ /api/reports/test                                        1.14 kB         103 kB
+├ ƒ /api/reservations                                        1.14 kB         103 kB
+├ ƒ /api/reservations/[id]                                   1.14 kB         103 kB
+├ ƒ /api/reservations/[id]/confirm                           1.14 kB         103 kB
+├ ƒ /api/reservations/expire                                 1.14 kB         103 kB
+├ ƒ /api/reservations/stats                                  1.14 kB         103 kB
+├ ƒ /api/roles/[role]/permissions                            1.14 kB         103 kB
+├ ƒ /api/schedules                                           1.14 kB         103 kB
+├ ƒ /api/schedules/[id]                                      1.14 kB         103 kB
+├ ƒ /api/schedules/[id]/export                               1.14 kB         103 kB
+├ ƒ /api/schedules/[id]/items                                1.14 kB         103 kB
+├ ƒ /api/schedules/bulk/commit                               1.14 kB         103 kB
+├ ƒ /api/schedules/bulk/preview                              1.14 kB         103 kB
+├ ƒ /api/security                                            1.14 kB         103 kB
+├ ƒ /api/security/2fa                                        1.14 kB         103 kB
+├ ƒ /api/security/audit                                      1.14 kB         103 kB
+├ ƒ /api/security/password                                   1.14 kB         103 kB
+├ ƒ /api/security/preferences                                1.14 kB         103 kB
+├ ƒ /api/security/sessions                                   1.14 kB         103 kB
+├ ƒ /api/seed-campaigns                                      1.14 kB         103 kB
+├ ƒ /api/settings/workflow                                   1.14 kB         103 kB
+├ ƒ /api/settings/workflow/triggers                          1.14 kB         103 kB
+├ ƒ /api/settings/workflow/triggers/[id]                     1.14 kB         103 kB
+├ ƒ /api/shows                                               1.14 kB         103 kB
+├ ƒ /api/shows/[id]                                          1.14 kB         103 kB
+├ ƒ /api/shows/[id]/assignments                              1.14 kB         103 kB
+├ ƒ /api/shows/[id]/assignments/[userId]                     1.14 kB         103 kB
+├ ƒ /api/shows/[id]/availability                             1.14 kB         103 kB
+├ ƒ /api/shows/[id]/category-exclusivity                     1.14 kB         103 kB
+├ ƒ /api/shows/[id]/configurations                           1.14 kB         103 kB
+├ ƒ /api/shows/[id]/episodes                                 1.14 kB         103 kB
+├ ƒ /api/shows/[id]/metrics                                  1.14 kB         103 kB
+├ ƒ /api/shows/[id]/metrics/daily-trend                      1.14 kB         103 kB
+├ ƒ /api/shows/[id]/metrics/history                          1.14 kB         103 kB
+├ ƒ /api/shows/[id]/metrics/summary                          1.14 kB         103 kB
+├ ƒ /api/shows/[id]/metrics/sync                             1.14 kB         103 kB
+├ ƒ /api/shows/[id]/placements                               1.14 kB         103 kB
+├ ƒ /api/shows/[id]/placements/[placementId]                 1.14 kB         103 kB
+├ ƒ /api/shows/[id]/rate-history                             1.14 kB         103 kB
+├ ƒ /api/shows/[id]/rate-history/[rateId]                    1.14 kB         103 kB
+├ ƒ /api/shows/[id]/revenue-projection                       1.14 kB         103 kB
+├ ƒ /api/shows/[id]/revenue-sharing                          1.14 kB         103 kB
+├ ƒ /api/shows/[id]/sync-youtube                             1.14 kB         103 kB
+├ ƒ /api/shows/[id]/youtube-settings                         1.14 kB         103 kB
+├ ƒ /api/shows/metrics/summary                               1.14 kB         103 kB
+├ ƒ /api/shows/spot-configuration                            1.14 kB         103 kB
+├ ƒ /api/socket                                              1.14 kB         103 kB
+├ ƒ /api/talent-approvals                                    1.14 kB         103 kB
+├ ƒ /api/talent-approvals/[id]                               1.14 kB         103 kB
+├ ƒ /api/tasks                                               1.14 kB         103 kB
+├ ƒ /api/tasks/[id]                                          1.14 kB         103 kB
+├ ƒ /api/tasks/stats                                         1.14 kB         103 kB
+├ ƒ /api/tasks/upcoming                                      1.14 kB         103 kB
+├ ƒ /api/test/timezone                                       1.14 kB         103 kB
+├ ƒ /api/upload/audio                                        1.14 kB         103 kB
+├ ƒ /api/upload/creative                                     1.14 kB         103 kB
+├ ƒ /api/upload/documents                                    1.14 kB         103 kB
+├ ƒ /api/user/clear-sidebar                                  1.14 kB         103 kB
+├ ƒ /api/user/email-preferences                              1.14 kB         103 kB
+├ ƒ /api/user/preferences                                    1.14 kB         103 kB
+├ ƒ /api/user/preferences/migrate                            1.14 kB         103 kB
+├ ƒ /api/user/profile                                        1.14 kB         103 kB
+├ ƒ /api/user/unsubscribe/[token]                            1.14 kB         103 kB
+├ ƒ /api/users                                               1.14 kB         103 kB
+├ ƒ /api/users/[userId]                                      1.14 kB         103 kB
+├ ƒ /api/users/[userId]/role                                 1.14 kB         103 kB
+├ ƒ /api/users/[userId]/status                               1.14 kB         103 kB
+├ ƒ /api/users/by-role                                       1.14 kB         103 kB
+├ ƒ /api/webhooks/ses                                        1.14 kB         103 kB
+├ ƒ /api/workflow/automations                                1.14 kB         103 kB
+├ ƒ /api/workflow/health                                     1.14 kB         103 kB
+├ ƒ /api/youtube/analytics                                   1.14 kB         103 kB
+├ ƒ /api/youtube/analytics/backfill                          1.14 kB         103 kB
+├ ƒ /api/youtube/analytics/channel                           1.14 kB         103 kB
+├ ƒ /api/youtube/analytics/video                             1.14 kB         103 kB
+├ ƒ /api/youtube/auth/callback                               1.14 kB         103 kB
+├ ƒ /api/youtube/auth/connect                                1.14 kB         103 kB
+├ ƒ /api/youtube/auth/disconnect                             1.14 kB         103 kB
+├ ƒ /api/youtube/channels                                    1.14 kB         103 kB
+├ ƒ /api/youtube/config                                      1.14 kB         103 kB
+├ ƒ /api/youtube/public/channel                              1.14 kB         103 kB
+├ ƒ /api/youtube/public/search                               1.14 kB         103 kB
+├ ƒ /api/youtube/public/video                                1.14 kB         103 kB
+├ ƒ /api/youtube/sync-analytics                              1.14 kB         103 kB
+├ ƒ /api/youtube/sync-channel-data                           1.14 kB         103 kB
+├ ƒ /api/youtube/sync/[showId]                               1.14 kB         103 kB
+├ ○ /availability                                            8.44 kB        1.67 MB
+├ ƒ /availability/[id]                                       7.37 kB        1.66 MB
+├ ○ /backups                                                 8.49 kB        1.68 MB
+├ ○ /budget                                                  4.07 kB         1.7 MB
+├ ○ /calendar                                                62.9 kB        1.73 MB
+├ ○ /campaigns                                               17.5 kB        1.95 MB
+├ ƒ /campaigns/[id]                                          17.3 kB         1.7 MB
+├ ƒ /campaigns/[id]/approval                                 14.9 kB        1.69 MB
+├ ƒ /campaigns/[id]/edit                                     15.7 kB        1.74 MB
+├ ƒ /campaigns/[id]/schedule                                 43.7 kB         347 kB
+├ ƒ /campaigns/[id]/versions                                 6.18 kB        1.68 MB
+├ ○ /campaigns/new                                             549 B         102 kB
+├ ○ /campaigns/new-simple                                    6.47 kB        1.66 MB
+├ ○ /client                                                  3.39 kB        1.64 MB
+├ ○ /client/billing                                           6.3 kB        1.65 MB
+├ ○ /client/campaigns                                        5.59 kB        1.64 MB
+├ ○ /client/reports                                          6.42 kB        1.66 MB
+├ ○ /clients                                                 8.07 kB        1.77 MB
+├ ○ /dashboard                                               24.6 kB        2.02 MB
+├ ○ /debug-auth                                                442 B         127 kB
+├ ○ /episodes                                                19.6 kB        1.81 MB
+├ ƒ /episodes/[id]                                           9.12 kB        1.68 MB
+├ ƒ /episodes/[id]/edit                                      5.04 kB        1.75 MB
+├ ƒ /episodes/[id]/talent                                     7.6 kB        1.76 MB
+├ ○ /episodes/new                                            9.65 kB        1.75 MB
+├ ○ /executive/reports                                         426 B         102 kB
+├ ○ /files                                                     432 B         102 kB
+├ ○ /financial-hub                                           16.2 kB        1.75 MB
+├ ○ /financials                                              29.7 kB        2.01 MB
+├ ○ /forgot-password                                         4.87 kB         171 kB
+├ ○ /insertion-orders                                        12.9 kB        1.68 MB
+├ ƒ /insertion-orders/[id]                                   11.9 kB        1.78 MB
+├ ƒ /insertion-orders/[id]/edit                              13.8 kB        1.73 MB
+├ ○ /insertion-orders/new                                    15.5 kB        1.73 MB
+├ ○ /integrations                                            7.15 kB        1.68 MB
+├ ○ /integrations/megaphone                                  7.92 kB        1.67 MB
+├ ○ /integrations/youtube                                    6.82 kB        1.66 MB
+├ ○ /inventory                                               9.66 kB        1.68 MB
+├ ƒ /kpi-update/[token]                                       7.9 kB         186 kB
+├ ○ /kpi-update/success                                      3.36 kB         139 kB
+├ ○ /login                                                   3.53 kB         175 kB
+├ ○ /master                                                   6.7 kB        1.65 MB
+├ ○ /master/analytics                                        7.54 kB        1.66 MB
+├ ○ /master/billing                                          25.7 kB        1.74 MB
+├ ○ /master/impersonate                                      5.28 kB         217 kB
+├ ○ /master/impersonate-standalone                           5.07 kB        1.65 MB
+├ ○ /master/organizations                                    8.38 kB        1.66 MB
+├ ƒ /master/organizations/[id]                               7.91 kB        1.66 MB
+├ ƒ /master/organizations/[id]/billing                       7.24 kB        1.66 MB
+├ ƒ /master/organizations/[id]/features                      9.17 kB        1.66 MB
+├ ○ /master/organizations/new                                 8.6 kB        1.66 MB
+├ ○ /master/settings                                         7.78 kB        1.67 MB
+├ ○ /master/users                                            8.92 kB        1.67 MB
+├ ○ /monitoring                                              9.24 kB        1.77 MB
+├ ○ /notifications                                           7.56 kB        1.68 MB
+├ ○ /pipeline                                                11.9 kB        1.68 MB
+├ ○ /post-sale                                               24.9 kB        1.71 MB
+├ ○ /presale                                                 23.8 kB        1.72 MB
+├ ○ /privacy                                                 5.38 kB         132 kB
+├ ○ /producer                                                8.38 kB        1.66 MB
+├ ○ /producer/dashboard                                      3.34 kB        1.65 MB
+├ ○ /producer/episodes                                       7.19 kB        1.67 MB
+├ ○ /producer/shows                                          6.13 kB        1.67 MB
+├ ƒ /producer/tasks/[id]                                     6.04 kB        1.66 MB
+├ ○ /profile                                                 5.75 kB        1.66 MB
+├ ○ /proposal-templates                                      6.37 kB        1.68 MB
+├ ○ /proposals                                               6.81 kB        1.68 MB
+├ ƒ /proposals/[id]                                          12.1 kB        1.69 MB
+├ ○ /reports                                                 17.6 kB        2.03 MB
+├ ○ /reservations                                              14 kB        1.69 MB
+├ ○ /reservations/create                                     9.99 kB        1.73 MB
+├ ○ /reset-password                                          6.05 kB         169 kB
+├ ○ /schedule-builder                                        51.6 kB        2.28 MB
+├ ○ /seller                                                  6.28 kB        1.65 MB
+├ ○ /seller/billing                                          5.42 kB        1.67 MB
+├ ○ /seller/pipeline                                         6.23 kB        1.68 MB
+├ ○ /settings                                                53.9 kB        1.86 MB
+├ ○ /shows                                                   12.5 kB        1.77 MB
+├ ƒ /shows/[id]                                              39.5 kB        1.86 MB
+├ ƒ /shows/[id]/analytics                                    8.73 kB        1.77 MB
+├ ƒ /shows/[id]/edit                                         8.47 kB        1.69 MB
+├ ƒ /shows/[id]/episodes                                     4.56 kB        1.66 MB
+├ ƒ /shows/[id]/metrics                                      28.2 kB        1.85 MB
+├ ƒ /shows/[id]/placements                                    6.6 kB        1.68 MB
+├ ○ /signup                                                  3.47 kB         175 kB
+├ ○ /talent                                                  5.88 kB        1.65 MB
+├ ○ /talent/dashboard                                        5.62 kB        1.67 MB
+├ ○ /talent/episodes                                         7.71 kB        1.67 MB
+├ ○ /talent/recordings                                       7.93 kB        1.67 MB
+├ ○ /talent/schedule                                           10 kB        1.67 MB
+├ ○ /terms                                                   4.98 kB         135 kB
+├ ○ /test                                                    1.14 kB         103 kB
+└ ○ /test-email                                                 6 kB        1.66 MB
++ First Load JS shared by all                                 102 kB
+  ├ chunks/15964-9dad19fb2631f0c4.js                         44.7 kB
+  ├ chunks/4bd1b696-d5b63c61c2951318.js                      54.2 kB
+  └ other shared chunks (total)                              2.78 kB
+
+
+ƒ Middleware                                                 33.6 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+[0;32m✅ Build completed successfully in 213 seconds[0m
+[2025-08-21 19:49:07] Build completed successfully in 213 seconds
+Copying static files to nginx directory...
+Static files copied to nginx directory!
+Ensuring prerender-manifest.json exists...
+prerender-manifest.js not found, creating default manifest...
+Created default prerender-manifest.json
+✓ prerender-manifest.json exists
+-rw-r--r--. 1 ec2-user ec2-user 254 Aug 21 19:49 /home/ec2-user/podcastflow-pro/.next/prerender-manifest.json
+Post-build tasks completed!

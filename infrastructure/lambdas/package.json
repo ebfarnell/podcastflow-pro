@@ -1,0 +1,10 @@
+{
+  "name": "podcastflow-lambdas",
+  "version": "1.0.0",
+  "description": "Lambda functions for PodcastFlow Pro",
+  "dependencies": {
+    "aws-sdk": "^2.1400.0",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1"
+  }
+}

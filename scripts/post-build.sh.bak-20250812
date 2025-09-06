@@ -1,0 +1,31 @@
+#!/bin/bash
+# Post-build script to copy static files to nginx directory and standalone
+
+echo "Copying static files to nginx directory..."
+sudo rm -rf /var/www/podcastflow-static/*
+sudo cp -r /home/ec2-user/podcastflow-pro/.next/static/* /var/www/podcastflow-static/
+sudo chown -R nginx:nginx /var/www/podcastflow-static/
+echo "Static files copied to nginx directory!"
+
+echo "Copying static files to standalone directory..."
+# Copy .next/static directory
+if [ -d ".next/static" ]; then
+    cp -r .next/static .next/standalone/.next/
+    echo "✓ Static files copied to standalone"
+else
+    echo "✗ No .next/static directory found"
+fi
+
+# Copy public directory
+if [ -d "public" ]; then
+    cp -r public .next/standalone/
+    echo "✓ Public directory copied to standalone"
+else
+    echo "✗ No public directory found"
+fi
+
+# Ensure prerender-manifest.json exists
+echo "Ensuring prerender-manifest.json exists..."
+/home/ec2-user/podcastflow-pro/scripts/ensure-prerender-manifest.sh
+
+echo "Post-build tasks completed!"

@@ -1,0 +1,260 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: PodcastFlow Pro API Gateway with Cognito Authentication
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - development
+      - staging
+      - production
+    Description: Environment name
+    
+  UserPoolArn:
+    Type: String
+    Description: ARN of the Cognito User Pool
+    
+  AllowedOrigins:
+    Type: String
+    Default: https://app.podcastflow.pro,https://podcastflow.pro
+    Description: Comma-separated list of allowed CORS origins
+
+Resources:
+  # API Gateway REST API
+  PodcastFlowAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub podcastflow-api-${Environment}
+      Description: PodcastFlow Pro API Gateway
+      EndpointConfiguration:
+        Types:
+          - EDGE
+      Policy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: 'execute-api:Invoke'
+            Resource: '*'
+
+  # Cognito Authorizer
+  CognitoAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: PodcastFlowCognitoAuthorizer
+      Type: COGNITO_USER_POOLS
+      IdentitySource: method.request.header.Authorization
+      RestApiId: !Ref PodcastFlowAPI
+      ProviderARNs:
+        - !Ref UserPoolArn
+
+  # Request Validator
+  RequestValidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties:
+      Name: RequestValidator
+      RestApiId: !Ref PodcastFlowAPI
+      ValidateRequestBody: true
+      ValidateRequestParameters: true
+
+  # API Resources
+  CampaignsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      ParentId: !GetAtt PodcastFlowAPI.RootResourceId
+      PathPart: campaigns
+
+  CampaignByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      ParentId: !Ref CampaignsResource
+      PathPart: '{id}'
+
+  ShowsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      ParentId: !GetAtt PodcastFlowAPI.RootResourceId
+      PathPart: shows
+
+  ShowByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      ParentId: !Ref ShowsResource
+      PathPart: '{id}'
+
+  FinancialsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      ParentId: !GetAtt PodcastFlowAPI.RootResourceId
+      PathPart: financials
+
+  AnalyticsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      ParentId: !GetAtt PodcastFlowAPI.RootResourceId
+      PathPart: analytics
+
+  ReportsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      ParentId: !GetAtt PodcastFlowAPI.RootResourceId
+      PathPart: reports
+
+  # Lambda Integration Example - Campaigns GET
+  CampaignsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      ResourceId: !Ref CampaignsResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:podcastflow-campaigns
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: !Sub "'${AllowedOrigins}'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # CORS Configuration
+  CampaignsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      ResourceId: !Ref CampaignsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: !Sub "'${AllowedOrigins}'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # API Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - CampaignsGetMethod
+      - CampaignsOptionsMethod
+    Properties:
+      RestApiId: !Ref PodcastFlowAPI
+      Description: !Sub '${Environment} deployment'
+
+  # API Stage
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: !Ref Environment
+      RestApiId: !Ref PodcastFlowAPI
+      DeploymentId: !Ref ApiDeployment
+      MethodSettings:
+        - ResourcePath: /*
+          HttpMethod: '*'
+          LoggingLevel: ERROR
+          DataTraceEnabled: true
+          MetricsEnabled: true
+          ThrottlingRateLimit: 10000
+          ThrottlingBurstLimit: 5000
+      Variables:
+        environment: !Ref Environment
+
+  # Usage Plan
+  ApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub podcastflow-usage-plan-${Environment}
+      Description: Usage plan for PodcastFlow Pro API
+      ApiStages:
+        - ApiId: !Ref PodcastFlowAPI
+          Stage: !Ref ApiStage
+      Throttle:
+        RateLimit: 10000
+        BurstLimit: 5000
+      Quota:
+        Limit: 1000000
+        Period: MONTH
+
+  # Lambda Permissions
+  CampaignsLambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: podcastflow-campaigns
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PodcastFlowAPI}/*/*
+
+  # CloudWatch Log Group
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/podcastflow-${Environment}
+      RetentionInDays: 30
+
+  # API Gateway Account (for CloudWatch logging)
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
+
+  # IAM Role for API Gateway CloudWatch Logging
+  ApiGatewayCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${PodcastFlowAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Export:
+      Name: !Sub PodcastFlow-ApiEndpoint-${Environment}
+
+  ApiId:
+    Description: API Gateway ID
+    Value: !Ref PodcastFlowAPI
+    Export:
+      Name: !Sub PodcastFlow-ApiId-${Environment}
+
+  AuthorizerId:
+    Description: Cognito Authorizer ID
+    Value: !Ref CognitoAuthorizer
+    Export:
+      Name: !Sub PodcastFlow-AuthorizerId-${Environment}

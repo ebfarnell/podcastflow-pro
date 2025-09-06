@@ -1,0 +1,272 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: PodcastFlow Pro - Simplified Infrastructure for Quick Setup
+
+Parameters:
+  MasterUserEmail:
+    Type: String
+    Description: Email for the master user account
+    AllowedPattern: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
+    ConstraintDescription: Must be a valid email address
+
+Resources:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: podcastflow-pro-users
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: podcastflow-pro-client
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  # Create Master User
+  MasterUser:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      UserPoolId: !Ref UserPool
+      Username: !Ref MasterUserEmail
+      UserAttributes:
+        - Name: email
+          Value: !Ref MasterUserEmail
+        - Name: email_verified
+          Value: 'true'
+      DesiredDeliveryMediums:
+        - EMAIL
+      ForceAliasCreation: true
+      MessageAction: SUPPRESS
+
+  # DynamoDB Table
+  MainTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: podcastflow-pro
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # S3 Buckets
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'podcastflow-media-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'podcastflow-documents-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:*
+                Resource:
+                  - !GetAtt MainTable.Arn
+                  - !Sub '${MainTable.Arn}/*'
+        - PolicyName: CognitoAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:*
+                Resource: !GetAtt UserPool.Arn
+
+  # API Gateway
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: podcastflow-pro-api
+      Description: PodcastFlow Pro API
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # API Gateway Authorizer
+  ApiAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: CognitoAuthorizer
+      Type: COGNITO_USER_POOLS
+      ProviderARNs:
+        - !GetAtt UserPool.Arn
+      RestApiId: !Ref ApiGateway
+      IdentitySource: method.request.header.Authorization
+
+  # Lambda Function
+  MainLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: podcastflow-pro-main
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref MainTable
+          USER_POOL_ID: !Ref UserPool
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const response = {
+              statusCode: 200,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+              },
+              body: JSON.stringify({
+                message: 'PodcastFlow Pro API',
+                path: event.path,
+                method: event.httpMethod
+              })
+            };
+            return response;
+          };
+
+  # API Gateway Lambda Permission
+  ApiGatewayInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MainLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
+
+  # API Gateway Proxy Resource
+  ProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: '{proxy+}'
+
+  # API Gateway Method
+  ProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MainLambda.Arn}/invocations'
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ProxyMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: prod
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: PodcastFlow-UserPoolId
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+    Export:
+      Name: PodcastFlow-UserPoolClientId
+
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod'
+    Export:
+      Name: PodcastFlow-ApiEndpoint
+
+  DynamoDBTableName:
+    Description: DynamoDB Table Name
+    Value: !Ref MainTable
+    Export:
+      Name: PodcastFlow-TableName
+
+  MediaBucketName:
+    Description: S3 Media Bucket Name
+    Value: !Ref MediaBucket
+    Export:
+      Name: PodcastFlow-MediaBucket
+
+  MasterUserNote:
+    Description: Master user setup instructions
+    Value: !Sub 'Master user created with email: ${MasterUserEmail}. Check AWS Secrets Manager for credentials.'

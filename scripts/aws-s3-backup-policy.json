@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PodcastFlowBackupAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:PutObjectAcl",
+        "s3:GetObject",
+        "s3:GetObjectAcl",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::podcastflow-pro-uploads-590183844530/organizations/*",
+        "arn:aws:s3:::podcastflow-pro-uploads-590183844530"
+      ]
+    },
+    {
+      "Sid": "PodcastFlowBackupList",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::podcastflow-pro-uploads-590183844530"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+You are now connected to database "podcastflow_production" as user "podcastflow".
+SET
+=== ADVERTISERS WITHOUT AGENCIES (Show as "Direct" in UI) ===
+ id | name | contactEmail | agencyId | isActive | createdAt | createdBy | campaign_count | total_budget 
+----+------+--------------+----------+----------+-----------+-----------+----------------+--------------
+(0 rows)
+
+
+=== ORPHANED BILLING RECORDS (No matching advertiser) ===
+psql:audit_direct_advertisers.sql:41: ERROR:  column i.advertiserId does not exist
+LINE 10: LEFT JOIN "Advertiser" a ON a.id = i."advertiserId"
+                                            ^
+
+=== CAMPAIGNS WITH MISSING ADVERTISERS ===
+ campaign_id | campaign_name | advertiserId | budget | status | createdAt 
+-------------+---------------+--------------+--------+--------+-----------
+(0 rows)
+
+
+=== HIERARCHICAL BUDGETS WITH MISSING ADVERTISERS ===
+psql:audit_direct_advertisers.sql:74: ERROR:  column hb.budgetType does not exist
+LINE 5:     hb."budgetType",
+            ^
+
+=== ADVERTISER SUMMARY BY AGENCY STATUS ===
+ agency_status | advertiser_count | total_campaigns |    total_budget    | avg_campaign_budget 
+---------------+------------------+-----------------+--------------------+---------------------
+ Has Agency    |               23 |              46 | 3487852.3549729954 |   75822.87728202164
+(1 row)
+
+
+=== ADVERTISERS WITH BLANK OR NULL NAMES ===
+ id | name | contactEmail | agencyId | isActive | createdAt 
+----+------+--------------+----------+----------+-----------
+(0 rows)
+
+
+=== REVENUE DATA FOR DIRECT ADVERTISERS ===
+psql:audit_direct_advertisers.sql:126: ERROR:  column i.advertiserId does not exist
+LINE 9: LEFT JOIN "Invoice" i ON i."advertiserId" = a.id
+                                 ^
+
+=== DETAILED DIRECT ADVERTISER DATA FOR EXPORT ===
+COPY 0
+Exported to: /tmp/direct_advertisers_export.csv
+
+=== SUMMARY COUNTS ===
+ direct_advertisers | agency_advertisers | direct_campaigns | direct_total_budget 
+--------------------+--------------------+------------------+---------------------
+                  0 |                 23 |                0 |                   0
+(1 row)
+

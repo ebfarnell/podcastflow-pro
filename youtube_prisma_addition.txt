@@ -1,0 +1,27 @@
+// Add this to the end of your schema.prisma file
+
+// YouTube API Configuration (per organization)
+model YouTubeApiConfig {
+  id              String      @id @default(cuid())
+  organizationId  String      @unique
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  
+  // API Key for public data access (encrypted)
+  apiKey          String?
+  
+  // OAuth 2.0 credentials (clientSecret encrypted)
+  clientId        String?
+  clientSecret    String?
+  redirectUri     String?
+  
+  // Configuration
+  isActive        Boolean     @default(true)
+  quotaLimit      Int         @default(10000)
+  quotaUsed       Int         @default(0)
+  quotaResetAt    DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([organizationId])
+}

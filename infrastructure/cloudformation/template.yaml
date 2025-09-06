@@ -1,0 +1,351 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: PodcastFlow Pro - Serverless Infrastructure
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  DomainName:
+    Type: String
+    Description: Domain name for the application
+    Default: ''
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        DYNAMODB_TABLE_NAME: !Ref MainTable
+
+Resources:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${AWS::StackName}-users-${Environment}
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      PasswordPolicy:
+        MinimumLength: 8
+        RequireUppercase: true
+        RequireLowercase: true
+        RequireNumbers: true
+        RequireSymbols: true
+      MfaConfiguration: OPTIONAL
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub ${AWS::StackName}-client-${Environment}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  # DynamoDB Table
+  MainTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${AWS::StackName}-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  # API Gateway
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub ${AWS::StackName}-api-${Environment}
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt UserPool.Arn
+            Identity:
+              Header: Authorization
+
+  # Lambda Functions
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-auth-${Environment}
+      CodeUri: ../lambdas/auth/
+      Handler: index.handler
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MainTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:*
+              Resource: !GetAtt UserPool.Arn
+      Events:
+        GetProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /auth/profile
+            Method: GET
+        UpdateProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /auth/profile
+            Method: PUT
+
+  CampaignsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-campaigns-${Environment}
+      CodeUri: ../lambdas/campaigns/
+      Handler: index.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MainTable
+      Events:
+        ListCampaigns:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /campaigns
+            Method: GET
+        GetCampaign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /campaigns/{id}
+            Method: GET
+        CreateCampaign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /campaigns
+            Method: POST
+        UpdateCampaign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /campaigns/{id}
+            Method: PUT
+        DeleteCampaign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /campaigns/{id}
+            Method: DELETE
+
+  # S3 Buckets
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-media-${Environment}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-documents-${Environment}
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # CloudFront Distribution
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: HasDomainName
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt MediaBucket.RegionalDomainName
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        Enabled: true
+        DefaultRootObject: index.html
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  # ElastiCache Redis Cluster
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for Redis cluster
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      CacheNodeType: cache.t3.micro
+      Engine: redis
+      NumCacheNodes: 1
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref RedisSecurityGroup
+
+  # Security Groups
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Redis cluster
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda functions
+      VpcId: !Ref VPC
+
+  # VPC Resources (simplified)
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.0.1.0/24
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.0.2.0/24
+
+Conditions:
+  HasDomainName: !Not [!Equals [!Ref DomainName, '']]
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiEndpoint
+
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolId
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolClientId
+
+  DynamoDBTableName:
+    Description: DynamoDB Table Name
+    Value: !Ref MainTable
+    Export:
+      Name: !Sub ${AWS::StackName}-TableName
+
+  MediaBucketName:
+    Description: S3 Media Bucket Name
+    Value: !Ref MediaBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-MediaBucket

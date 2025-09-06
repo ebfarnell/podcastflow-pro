@@ -1,0 +1,13 @@
+{
+  "name": "podcastflow-team-lambda",
+  "version": "1.0.0",
+  "description": "Team management Lambda for PodcastFlow Pro",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1547.0",
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

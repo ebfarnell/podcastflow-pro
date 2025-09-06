@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# Setup script for PodcastFlow Pro database
+
+echo "🚀 Setting up PodcastFlow Pro database..."
+
+# Check if .env file exists
+if [ ! -f .env ]; then
+    echo "❌ Error: .env file not found!"
+    echo "Please create a .env file with your database configuration."
+    echo ""
+    echo "Example .env file:"
+    echo "DATABASE_URL=\"postgresql://username:password@localhost:5432/podcastflow\""
+    echo "NEXTAUTH_SECRET=\"your-secret-key\""
+    echo "AWS_REGION=\"us-east-1\""
+    echo "AWS_ACCESS_KEY_ID=\"your-access-key\""
+    echo "AWS_SECRET_ACCESS_KEY=\"your-secret-key\""
+    echo "S3_BUCKET_NAME=\"your-bucket-name\""
+    echo "EMAIL_FROM=\"noreply@podcastflow.com\""
+    echo "EMAIL_HOST=\"smtp.gmail.com\""
+    echo "EMAIL_PORT=\"587\""
+    echo "EMAIL_USER=\"your-email@gmail.com\""
+    echo "EMAIL_PASSWORD=\"your-app-password\""
+    exit 1
+fi
+
+# Load environment variables
+export $(cat .env | grep -v '^#' | xargs)
+
+# Check if PostgreSQL is running
+echo "Checking PostgreSQL connection..."
+if ! npx prisma db push --skip-generate 2>/dev/null; then
+    echo "❌ Error: Cannot connect to PostgreSQL!"
+    echo "Please ensure PostgreSQL is running and DATABASE_URL is correct."
+    exit 1
+fi
+
+echo "✅ PostgreSQL connection successful!"
+
+# Generate Prisma client
+echo "Generating Prisma client..."
+npx prisma generate
+
+# Push database schema
+echo "Pushing database schema..."
+npx prisma db push
+
+# Run seed script
+echo "Seeding database with sample data..."
+npm run db:seed
+
+echo ""
+echo "✅ Database setup complete!"
+echo ""
+echo "You can now log in with these credentials:"
+echo ""
+echo "Master Admin:"
+echo "  Email: master@podcastflow.com"
+echo "  Password: masterpassword123"
+echo ""
+echo "Demo Media Admin:"
+echo "  Email: admin@demomedia.com"
+echo "  Password: adminpassword123"
+echo ""
+echo "Sales Rep:"
+echo "  Email: sales@demomedia.com"
+echo "  Password: salespassword123"
+echo ""
+echo "Producer:"
+echo "  Email: producer@demomedia.com"
+echo "  Password: producerpassword123"
+echo ""
+echo "Talent:"
+echo "  Email: talent@demomedia.com"
+echo "  Password: talentpassword123"
+echo ""
+echo "To reset the database, run: npm run db:reset"

@@ -1,0 +1,10 @@
+{
+  "name": "billing-lambda",
+  "version": "1.0.0",
+  "description": "Billing management Lambda function",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1000.0",
+    "stripe": "^11.0.0"
+  }
+}

@@ -1,0 +1,1658 @@
+import { querySchema, safeQuerySchema } from '@/lib/db/schema-db'
+import prisma from '@/lib/db/prisma'
+import { getTenantClient } from '@/lib/db/tenant-isolation'
+import { notificationService } from '@/lib/notifications/notification-service'
+import { activityService } from '@/lib/activities/activity-service'
+import { Prisma } from '@prisma/client'
+import { v4 as uuidv4 } from 'uuid'
+import { workflowLogger, WorkflowPhase } from './workflow-logger'
+import { 
+  WORKFLOW_STATES, 
+  WORKFLOW_EVENTS,
+  WorkflowSettings,
+  DEFAULT_WORKFLOW_SETTINGS,
+  getNextStateForEvent,
+  isScheduleValid 
+} from './workflow-constants'
+
+export interface CampaignWorkflowContext {
+  campaignId: string
+  organizationId: string
+  organizationSlug: string
+  userId: string
+  userName: string
+  userRole: string
+}
+
+export class CampaignWorkflowService {
+  /**
+   * Handle campaign probability/status update with workflow automation
+   */
+  async handleCampaignStatusUpdate(
+    context: CampaignWorkflowContext,
+    newProbability: number,
+    newStatus?: string
+  ) {
+    const workflowId = `wf_${Date.now()}_${context.campaignId}`
+    const startTime = workflowLogger.startWorkflow(workflowId, 'campaign_90pct', {
+      campaignId: context.campaignId,
+      organizationId: context.organizationId,
+      newProbability,
+      newStatus
+    })
+
+    try {
+      // Get campaign details using querySchema
+      const campaignQuery = `
+        SELECT 
+          c.*,
+          a.id as advertiser_id, a.name as advertiser_name,
+          ag.id as agency_id, ag.name as agency_name
+        FROM "Campaign" c
+        LEFT JOIN "Advertiser" a ON a.id = c."advertiserId"
+        LEFT JOIN "Agency" ag ON ag.id = c."agencyId"
+        WHERE c.id = $1
+      `
+      const campaigns = await querySchema<any>(context.organizationSlug, campaignQuery, [context.campaignId])
+      
+      if (!campaigns || campaigns.length === 0) {
+        throw new Error('Campaign not found')
+      }
+      
+      const campaign = campaigns[0]
+
+      if (!campaign) {
+        throw new Error('Campaign not found')
+      }
+
+      // Get workflow settings from database
+      let workflowSettings: any = {
+        autoReserveAt90: true,
+        requireAdminApprovalAt90: true,
+        notifyOnStatusChange: true,
+        autoAssignAdRequests: true,
+        autoGenerateContracts: false,
+        autoGenerateInvoices: false,
+        thresholds: {
+          approval_trigger: 90,
+          auto_win: 100,
+          rejection_fallback: 65,
+          reservation_threshold: 80
+        }
+      }
+      
+      try {
+        // Try to fetch settings from WorkflowSettings table
+        const settingsQuery = `
+          SELECT stages, thresholds, notifications, "isActive"
+          FROM public."WorkflowSettings"
+          WHERE "organizationId" = $1 
+          AND "workflowType" = 'campaign_approval'
+          AND "isActive" = true
+        `
+        const { data: settings } = await safeQuerySchema('public', settingsQuery, [context.organizationId])
+        
+        if (settings && settings.length > 0) {
+          const dbSettings = settings[0]
+          
+          // Validate and sanitize thresholds
+          const thresholds = dbSettings.thresholds || {}
+          const validatedThresholds = {
+            approval_trigger: this.validateThreshold(thresholds.approval_trigger, 90, 50, 100),
+            auto_win: this.validateThreshold(thresholds.auto_win, 100, 95, 100),
+            rejection_fallback: this.validateThreshold(thresholds.rejection_fallback, 65, 0, 85),
+            reservation_threshold: this.validateThreshold(thresholds.reservation_threshold, 80, 50, 95)
+          }
+          
+          workflowSettings = {
+            ...workflowSettings,
+            thresholds: validatedThresholds,
+            notifications: dbSettings.notifications || {},
+            stages: dbSettings.stages || []
+          }
+        }
+      } catch (error) {
+        console.log('Could not fetch workflow settings, using defaults:', error)
+        // Continue with default settings
+      }
+      
+      // Check if this is a transition to 65% (talent approval milestone)
+      const talentApprovalThreshold = 65
+      if (newProbability >= talentApprovalThreshold && campaign.probability < talentApprovalThreshold) {
+        await this.handleTransitionTo65(context, campaign, workflowSettings)
+      }
+      
+      // Check if this is a transition to approval threshold (default 90%)
+      const approvalThreshold = workflowSettings.thresholds?.approval_trigger || 90
+      if (newProbability >= approvalThreshold && campaign.probability < approvalThreshold) {
+        await this.handleTransitionTo90(context, campaign, workflowSettings)
+      }
+      
+      // Check if this is a transition away from approval threshold
+      if (campaign.probability >= approvalThreshold && newProbability < approvalThreshold && campaign.reservationId) {
+        await this.handleTransitionFrom90(context, campaign)
+      }
+
+      // Note: The campaign probability and status are already updated by the calling API route
+      // We only handle the automation side effects here (reservations, approvals, notifications)
+
+      // Log activity - using simplified structure for Activity table
+      const activityQuery = `
+        INSERT INTO "Activity" (id, type, description, "userId", metadata, "createdAt")
+        VALUES ($1, $2, $3, $4, $5, NOW())
+      `
+      
+      await querySchema(context.organizationSlug, activityQuery, [
+        `act_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        'campaign_update',
+        `Campaign probability updated from ${campaign.probability}% to ${newProbability}%`,
+        context.userId,
+        JSON.stringify({
+          action: 'status_updated',
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          actorName: context.userName,
+          actorRole: context.userRole,
+          oldProbability: campaign.probability,
+          newProbability,
+          oldStatus: campaign.status,
+          newStatus: newStatus || campaign.status
+        })
+      ])
+
+      workflowLogger.endWorkflow(workflowId, 'campaign_90pct', startTime, true, {
+        campaignId: context.campaignId,
+        oldProbability: campaign.probability,
+        newProbability,
+        transitionedTo90: newProbability === 90 && campaign.probability !== 90,
+        transitionedFrom90: campaign.probability === 90 && newProbability !== 90
+      })
+
+      return { success: true }
+    } catch (error) {
+      workflowLogger.error(workflowId, 'campaign_90pct', error as Error, {
+        campaignId: context.campaignId,
+        organizationId: context.organizationId,
+        organizationSlug: context.organizationSlug,
+        phase: WorkflowPhase.EXECUTION
+      })
+      
+      workflowLogger.endWorkflow(workflowId, 'campaign_90pct', startTime, false, {
+        error: (error as Error).message
+      })
+      
+      console.error('Error in campaign status update workflow:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Handle transition to 65% - Create talent approval requests for host-read/endorsed spots
+   */
+  private async handleTransitionTo65(
+    context: CampaignWorkflowContext,
+    campaign: any,
+    workflowSettings: any
+  ) {
+    console.log('🎯 [65% Milestone] Starting talent approval process')
+    
+    try {
+      // Get scheduled spots that need talent approval (host_read, endorsement)
+      const spotsQuery = `
+        SELECT DISTINCT 
+          ss."showId",
+          s.name as "showName",
+          s."talentId",
+          u.name as "talentName",
+          u.email as "talentEmail",
+          ss."placementType",
+          COUNT(*) as "spotCount",
+          MIN(ss."airDate") as "firstAirDate",
+          MAX(ss."airDate") as "lastAirDate"
+        FROM "ScheduledSpot" ss
+        LEFT JOIN "Show" s ON s.id = ss."showId"
+        LEFT JOIN public."User" u ON u.id = s."talentId"
+        WHERE ss."campaignId" = $1
+          AND ss."spotType" IN ('host_read', 'endorsement')
+          AND s."talentId" IS NOT NULL
+        GROUP BY ss."showId", s.name, s."talentId", u.name, u.email, ss."placementType"
+      `
+      
+      const { data: talentSpots } = await safeQuerySchema(context.organizationSlug, spotsQuery, [campaign.id])
+      
+      if (!talentSpots || talentSpots.length === 0) {
+        console.log('✅ [65% Milestone] No host-read/endorsement spots found, skipping talent approval')
+        return
+      }
+      
+      console.log(`📋 [65% Milestone] Found ${talentSpots.length} show/talent combinations requiring approval`)
+      
+      // Create approval requests for each unique talent/show combination
+      for (const spot of talentSpots) {
+        // Check if approval already exists
+        const existingQuery = `
+          SELECT id FROM "TalentApprovalRequest"
+          WHERE "campaignId" = $1 
+            AND "showId" = $2 
+            AND "talentId" = $3
+            AND status IN ('pending', 'approved')
+        `
+        const { data: existing } = await safeQuerySchema(
+          context.organizationSlug,
+          existingQuery,
+          [campaign.id, spot.showId, spot.talentId]
+        )
+        
+        if (existing && existing.length > 0) {
+          console.log(`⏭️ [65% Milestone] Approval already exists for ${spot.showName}`)
+          continue
+        }
+        
+        // Create talent approval request
+        const approvalId = uuidv4()
+        const summaryData = {
+          campaignName: campaign.name,
+          advertiserName: campaign.advertiser_name,
+          agencyName: campaign.agency_name,
+          spotCount: spot.spotCount,
+          firstAirDate: spot.firstAirDate,
+          lastAirDate: spot.lastAirDate,
+          placementType: spot.placementType,
+          budget: campaign.budget
+        }
+        
+        const insertQuery = `
+          INSERT INTO "TalentApprovalRequest" (
+            id, "campaignId", "showId", "talentId", "spotType",
+            "requestedAt", "requestedBy", status, "expiresAt",
+            "summaryData", "organizationId", "createdAt", "updatedAt"
+          ) VALUES (
+            $1, $2, $3, $4, $5,
+            NOW(), $6, 'pending', $7,
+            $8, $9, NOW(), NOW()
+          )
+        `
+        
+        const expirationDate = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)) // 7 days
+        
+        await safeQuerySchema(
+          context.organizationSlug,
+          insertQuery,
+          [
+            approvalId,
+            campaign.id,
+            spot.showId,
+            spot.talentId,
+            spot.spotCount > 0 ? 'host_read' : 'endorsement',
+            context.userId,
+            expirationDate,
+            JSON.stringify(summaryData),
+            context.organizationId
+          ]
+        )
+        
+        console.log(`✅ [65% Milestone] Created approval request for ${spot.showName} (${spot.talentName})`)
+        
+        // TODO: Send notification to talent
+        if (workflowSettings.notifyOnStatusChange !== false && spot.talentEmail) {
+          console.log(`📧 [65% Milestone] Sending approval request to ${spot.talentEmail}`)
+          // Notification implementation would go here
+        }
+      }
+      
+      console.log('🎉 [65% Milestone] Talent approval process completed')
+      
+    } catch (error) {
+      console.error('❌ [65% Milestone] Failed to create talent approvals:', error)
+      // Non-critical error - don't block workflow progression
+    }
+  }
+
+  /**
+   * Handle transition to 90% - Create reservations and approval request
+   */
+  private async handleTransitionTo90(
+    context: CampaignWorkflowContext,
+    campaign: any,
+    workflowSettings: any
+  ) {
+    const subWorkflowId = `wf_90_${Date.now()}_${campaign.id}`
+    
+    workflowLogger.info('Starting 90% transition', {
+      workflowId: subWorkflowId,
+      workflowType: 'campaign_90pct_transition',
+      campaignId: campaign.id,
+      organizationSlug: context.organizationSlug,
+      phase: WorkflowPhase.EXECUTION,
+      metadata: {
+        campaignName: campaign.name,
+        workflowSettings
+      }
+    })
+
+    console.log('🚀 [90% Automation] Starting transition to 90% for campaign:', {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      organizationSlug: context.organizationSlug,
+      workflowSettings
+    })
+
+    // Check for pending talent approvals (unless admin override)
+    if (context.userRole !== 'master' && context.userRole !== 'admin') {
+      const pendingApprovalsQuery = `
+        SELECT COUNT(*) as "pendingCount"
+        FROM "TalentApprovalRequest"
+        WHERE "campaignId" = $1
+          AND status = 'pending'
+      `
+      const { data: pendingData } = await safeQuerySchema(
+        context.organizationSlug,
+        pendingApprovalsQuery,
+        [campaign.id]
+      )
+      
+      const pendingCount = pendingData?.[0]?.pendingCount || 0
+      
+      if (pendingCount > 0) {
+        console.warn(`⚠️ [90% Automation] ${pendingCount} talent approvals are still pending`)
+        
+        // Check for denied approvals
+        const deniedApprovalsQuery = `
+          SELECT COUNT(*) as "deniedCount"
+          FROM "TalentApprovalRequest"
+          WHERE "campaignId" = $1
+            AND status = 'denied'
+        `
+        const { data: deniedData } = await safeQuerySchema(
+          context.organizationSlug,
+          deniedApprovalsQuery,
+          [campaign.id]
+        )
+        
+        const deniedCount = deniedData?.[0]?.deniedCount || 0
+        
+        if (deniedCount > 0) {
+          throw new Error(`Cannot proceed to 90%: ${deniedCount} talent approvals were denied`)
+        }
+        
+        // Allow if only pending (not denied), but log warning
+        console.log('⚠️ [90% Automation] Proceeding with pending talent approvals')
+      }
+    }
+
+    // Create inventory reservations if enabled
+    if (workflowSettings.autoReserveAt90 !== false) {
+      console.log('📦 [90% Automation] Creating inventory reservations...')
+      
+      workflowLogger.debug('Creating inventory reservations', {
+        workflowId: subWorkflowId,
+        workflowType: 'campaign_90pct_transition',
+        campaignId: campaign.id,
+        phase: WorkflowPhase.EXECUTION
+      })
+      
+      try {
+        const reservationId = await this.createInventoryReservations(context, campaign)
+        console.log('✅ [90% Automation] Reservations created:', reservationId)
+        
+        workflowLogger.info('Inventory reservations created', {
+          workflowId: subWorkflowId,
+          workflowType: 'campaign_90pct_transition',
+          campaignId: campaign.id,
+          phase: WorkflowPhase.EXECUTION,
+          metadata: { reservationId }
+        })
+        
+        // Update campaign with reservation ID using querySchema
+        await querySchema(
+          context.organizationSlug,
+          `UPDATE "Campaign" 
+           SET "reservationId" = $2, "reservationCreatedAt" = $3
+           WHERE id = $1`,
+          [campaign.id, reservationId, new Date()]
+        )
+      } catch (error) {
+        console.error('❌ [90% Automation] Failed to create reservations:', error)
+        throw error
+      }
+    }
+
+    // Create admin approval request if enabled
+    if (workflowSettings.requireAdminApprovalAt90 !== false) {
+      console.log('📋 [90% Automation] Creating admin approval request...')
+      try {
+        const approvalRequestId = await this.createAdminApprovalRequest(context, campaign)
+        console.log('✅ [90% Automation] Approval request created:', approvalRequestId)
+        
+        // Update campaign with approval request ID using querySchema
+        await querySchema(
+          context.organizationSlug,
+          `UPDATE "Campaign" 
+           SET "approvalRequestId" = $2
+           WHERE id = $1`,
+          [campaign.id, approvalRequestId]
+        )
+      } catch (error) {
+        console.error('❌ [90% Automation] Failed to create approval request:', error)
+        throw error
+      }
+    }
+
+    // Send notifications if enabled
+    if (workflowSettings.notifyOnStatusChange !== false) {
+      console.log('📧 [90% Automation] Sending status change notifications...')
+      try {
+        await this.sendStatusChangeNotifications(context, campaign, 90)
+        console.log('✅ [90% Automation] Notifications sent')
+      } catch (error) {
+        console.error('⚠️ [90% Automation] Failed to send notifications (non-critical):', error)
+        // Don't throw - notifications are non-critical
+      }
+    }
+
+    console.log('🎉 [90% Automation] Transition to 90% completed successfully')
+  }
+
+  /**
+   * Handle transition away from 90% - Release reservations
+   */
+  private async handleTransitionFrom90(
+    context: CampaignWorkflowContext,
+    campaign: any
+  ) {
+    if (campaign.reservationId) {
+      await this.releaseInventoryReservations(context, campaign.reservationId)
+      
+      // Clear reservation ID using querySchema
+      await querySchema(
+        context.organizationSlug,
+        `UPDATE "Campaign" 
+         SET "reservationId" = NULL, "reservationCreatedAt" = NULL
+         WHERE id = $1`,
+        [campaign.id]
+      )
+    }
+  }
+
+  /**
+   * Create inventory reservations for all scheduled spots
+   */
+  private async createInventoryReservations(
+    context: CampaignWorkflowContext,
+    campaign: any
+  ): Promise<string> {
+    console.log('📦 [Reservations] Starting inventory reservation creation')
+    
+    // Create an actual Reservation record that will show in pending approvals
+    const reservationId = uuidv4()
+    
+    // Get show IDs from scheduled spots
+    const showsQuery = `
+      SELECT DISTINCT "showId" 
+      FROM "ScheduledSpot" 
+      WHERE "campaignId" = $1
+    `
+    const { data: shows } = await safeQuerySchema<any>(context.organizationSlug, showsQuery, [campaign.id])
+    
+    const showIds = shows?.map((s: any) => s.showId) || []
+    
+    console.log(`📦 [Reservations] Creating reservation for ${showIds.length} shows`)
+    
+    // Create the reservation with 'held' status so it appears in pending approvals
+    const createReservationQuery = `
+      INSERT INTO "Reservation" (
+        id, "reservationNumber", "campaignId", "advertiserId", "agencyId", 
+        "totalAmount", "estimatedRevenue",
+        status, notes, "createdBy", "createdAt", "updatedAt",
+        "organizationId", "expiresAt"
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        'held', $8, $9, NOW(), NOW(), $10, $11
+      )
+      RETURNING id
+    `
+    
+    const expiresAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)) // 14 days
+    const reservationNumber = `RES-${Date.now()}`
+    
+    const { data: reservation } = await safeQuerySchema<any>(
+      context.organizationSlug,
+      createReservationQuery,
+      [
+        reservationId,
+        reservationNumber,
+        campaign.id,
+        campaign.advertiserId,
+        campaign.agencyId,
+        campaign.budget,
+        campaign.budget * 0.9, // estimated revenue at 90%
+        `Auto-generated reservation for campaign at 90% probability: ${campaign.name}`,
+        context.userId,
+        context.organizationId,
+        expiresAt
+      ]
+    )
+    
+    if (!reservation || reservation.length === 0) {
+      throw new Error('Failed to create reservation')
+    }
+    
+    console.log(`✅ [Reservations] Created reservation ${reservationId} with status 'held' for approval`)
+    
+    // Get scheduled spots from the campaign
+    const spotsQuery = `
+      SELECT ss.*, s.name as "showName", e.id as "episodeId"
+      FROM "ScheduledSpot" ss
+      LEFT JOIN "Show" s ON s.id = ss."showId"
+      LEFT JOIN "Episode" e ON e."showId" = ss."showId" 
+        AND DATE(e."airDate") = DATE(ss."airDate")
+      WHERE ss."campaignId" = $1
+    `
+    const scheduledSpots = await querySchema<any>(context.organizationSlug, spotsQuery, [campaign.id])
+    
+    console.log(`📦 [Reservations] Found ${scheduledSpots?.length || 0} scheduled spots`)
+    
+    if (!scheduledSpots || scheduledSpots.length === 0) {
+      console.warn('⚠️ [Reservations] No scheduled spots found for campaign')
+      return reservationId
+    }
+    
+    // Create ReservationItem records for each scheduled spot
+    for (const spot of scheduledSpots) {
+      const itemId = uuidv4()
+      const createItemQuery = `
+        INSERT INTO "ReservationItem" (
+          id, "reservationId", "showId", "episodeId", 
+          date, "placementType", "spotNumber", length,
+          rate, status, notes, "createdAt", "updatedAt"
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()
+        )
+      `
+      
+      await safeQuerySchema(
+        context.organizationSlug,
+        createItemQuery,
+        [
+          itemId,
+          reservationId,
+          spot.showId,
+          spot.episodeId,
+          spot.airDate,
+          spot.placementType || 'mid_roll',
+          1, // spotNumber
+          spot.length || 30,
+          spot.rate || 0,
+          'held',
+          `Reserved for ${spot.showName} on ${new Date(spot.airDate).toLocaleDateString()}`
+        ]
+      )
+      
+      console.log(`✅ [Reservations] Created reservation item for ${spot.showName}`)
+    }
+    
+    console.log(`📦 [Reservations] Created ${scheduledSpots.length} reservation items for approval`)
+    
+    // Log activity
+    await activityService.logActivity({
+      type: 'inventory',
+      action: 'reserved',
+      title: 'Inventory Reserved',
+      description: `Created reservation with ${scheduledSpots.length} inventory slots for campaign at 90% probability`,
+      actorId: context.userId,
+      actorName: context.userName,
+      actorEmail: '',
+      actorRole: context.userRole,
+      targetType: 'campaign',
+      targetId: campaign.id,
+      targetName: campaign.name,
+      organizationId: context.organizationId,
+      campaignId: campaign.id,
+      metadata: {
+        reservationId,
+        reservationCount: scheduledSpots.length,
+        status: 'held'
+      }
+    })
+
+    return reservationId
+  }
+
+  /**
+   * Release inventory reservations
+   */
+  private async releaseInventoryReservations(
+    context: CampaignWorkflowContext,
+    reservationId: string
+  ) {
+    // Find all reservations with this campaign using querySchema
+    const findQuery = `
+      SELECT * FROM "InventoryReservation" 
+      WHERE "campaignId" = $1 
+         OR metadata->>'masterReservationId' = $2
+    `
+    const reservations = await querySchema<any>(
+      context.organizationSlug, 
+      findQuery, 
+      [context.campaignId, reservationId]
+    )
+
+    // Delete all reservations
+    if (reservations && reservations.length > 0) {
+      const deleteQuery = `
+        DELETE FROM "InventoryReservation" 
+        WHERE id = ANY($1::uuid[])
+      `
+      await querySchema(
+        context.organizationSlug,
+        deleteQuery,
+        [reservations.map(r => r.id)]
+      )
+    }
+
+    // Log activity
+    await activityService.logActivity({
+      type: 'inventory',
+      action: 'released',
+      title: 'Inventory Released',
+      description: `Released ${reservations.length} inventory reservations`,
+      actorId: context.userId,
+      actorName: context.userName,
+      actorEmail: '',
+      actorRole: context.userRole,
+      targetType: 'campaign',
+      targetId: context.campaignId,
+      organizationId: context.organizationId,
+      metadata: {
+        reservationCount: reservations.length
+      }
+    })
+  }
+
+  /**
+   * Create admin approval request
+   */
+  private async createAdminApprovalRequest(
+    context: CampaignWorkflowContext,
+    campaign: any
+  ): Promise<string> {
+    // Calculate rate discrepancies
+    const rateAnalysis = await this.analyzeRateDiscrepancies(context, campaign)
+    
+    // Create approval request using querySchema
+    const approvalId = uuidv4()
+    const insertQuery = `
+      INSERT INTO "CampaignApproval" (
+        id, "campaignId", "requestedBy", status,
+        "hasRateDiscrepancy", "discrepancyDetails",
+        "discrepancyAmount", "discrepancyPercentage",
+        metadata, "createdAt", "updatedAt"
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
+      ) RETURNING *
+    `
+    
+    const approvalResult = await querySchema<any>(
+      context.organizationSlug,
+      insertQuery,
+      [
+        approvalId,
+        campaign.id,
+        context.userId,
+        'pending',
+        rateAnalysis.hasDiscrepancy,
+        JSON.stringify(rateAnalysis.details),
+        rateAnalysis.totalDiscrepancy,
+        rateAnalysis.averageDiscrepancyPercentage,
+        JSON.stringify({
+          campaignName: campaign.name,
+          advertiserName: campaign.advertiser_name,
+          agencyName: campaign.agency_name,
+          totalSpots: await this.getSpotCount(context, campaign.id),
+          campaignBudget: campaign.budget,
+          probability: 90
+        })
+      ]
+    )
+    
+    const approvalRequest = approvalResult[0]
+
+    // Notify all admins
+    await this.notifyAdminsOfApprovalRequest(context, campaign, approvalRequest, rateAnalysis)
+
+    return approvalRequest.id
+  }
+
+  /**
+   * Analyze rate discrepancies against rate cards
+   */
+  private async analyzeRateDiscrepancies(
+    context: CampaignWorkflowContext,
+    campaign: any
+  ) {
+    // For now, return no discrepancies - this can be enhanced later
+    // when we have proper rate card implementation
+    return {
+      hasDiscrepancy: false,
+      details: [],
+      totalDiscrepancy: 0,
+      totalRateCardValue: 0,
+      averageDiscrepancyPercentage: 0
+    }
+  }
+
+  /**
+   * Get spot count for campaign
+   */
+  private async getSpotCount(context: CampaignWorkflowContext, campaignId: string): Promise<number> {
+    const countQuery = `
+      SELECT COUNT(*) as count FROM "ScheduledSpot" 
+      WHERE "campaignId" = $1
+    `
+    const result = await querySchema<any>(context.organizationSlug, countQuery, [campaignId])
+    return parseInt(result[0]?.count || '0')
+  }
+  
+  /**
+   * Get rate for specific placement type
+   */
+  private getRateForPlacement(showPlacement: any, placementType: string): number {
+    switch (placementType) {
+      case 'preroll':
+      case 'pre-roll':
+        return showPlacement.preRollRate || showPlacement.basePreRollRate || 0
+      case 'midroll':
+      case 'mid-roll':
+        return showPlacement.midRollRate || showPlacement.baseMidRollRate || 0
+      case 'postroll':
+      case 'post-roll':
+        return showPlacement.postRollRate || showPlacement.basePostRollRate || 0
+      default:
+        return 0
+    }
+  }
+
+  /**
+   * Notify admins of approval request
+   */
+  private async notifyAdminsOfApprovalRequest(
+    context: CampaignWorkflowContext,
+    campaign: any,
+    approvalRequest: any,
+    rateAnalysis: any
+  ) {
+    // Get all admin users
+    const admins = await prisma.user.findMany({
+      where: {
+        organizationId: context.organizationId,
+        role: { in: ['admin', 'master'] },
+        isActive: true
+      }
+    })
+
+    // Create notifications for each admin
+    for (const admin of admins) {
+      await notificationService.createNotification({
+        userId: admin.id,
+        title: 'Campaign Approval Required',
+        message: `Campaign "${campaign.name}" has reached 90% probability and requires approval`,
+        type: 'approval_request',
+        category: 'workflow',
+        priority: 'high',
+        requiresAction: true,
+        actionUrl: `/campaigns/${campaign.id}/approval`,
+        metadata: {
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          approvalRequestId: approvalRequest.id,
+          advertiserName: campaign.advertiser?.name,
+          budget: campaign.budget,
+          hasRateDiscrepancy: rateAnalysis.hasDiscrepancy,
+          discrepancyAmount: rateAnalysis.totalDiscrepancy,
+          discrepancyPercentage: rateAnalysis.averageDiscrepancyPercentage
+        }
+      })
+    }
+  }
+
+  /**
+   * Send status change notifications
+   */
+  private async sendStatusChangeNotifications(
+    context: CampaignWorkflowContext,
+    campaign: any,
+    newProbability: number
+  ) {
+    // Notify campaign owner/seller
+    if (campaign.createdBy !== context.userId) {
+      await notificationService.createNotification({
+        userId: campaign.createdBy,
+        title: 'Campaign Status Updated',
+        message: `Campaign "${campaign.name}" probability updated to ${newProbability}%`,
+        type: 'status_update',
+        category: 'campaign',
+        actionUrl: `/campaigns/${campaign.id}`,
+        metadata: {
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          newProbability,
+          updatedBy: context.userName
+        }
+      })
+    }
+  }
+
+  /**
+   * Handle admin approval of campaign
+   */
+  async handleAdminApproval(
+    context: CampaignWorkflowContext,
+    approvalRequestId: string,
+    approved: boolean,
+    comments?: string
+  ) {
+    // Fetch workflow settings for dynamic thresholds
+    const workflowSettings = await this.getWorkflowSettings(context.organizationId)
+    
+    // Get approval request using querySchema
+    const approvalQuery = `
+      SELECT ca.*, 
+             c.id as campaign_id, c.name as campaign_name, c."advertiserId", c."agencyId", c.budget, c.status as campaign_status,
+             c."reservationId", c."createdBy",
+             a.name as advertiser_name,
+             ag.name as agency_name
+      FROM "CampaignApproval" ca
+      LEFT JOIN "Campaign" c ON c.id = ca."campaignId"
+      LEFT JOIN "Advertiser" a ON a.id = c."advertiserId"
+      LEFT JOIN "Agency" ag ON ag.id = c."agencyId"
+      WHERE ca.id = $1
+    `
+    const approvalResults = await querySchema<any>(context.organizationSlug, approvalQuery, [approvalRequestId])
+    
+    if (!approvalResults || approvalResults.length === 0 || approvalResults[0].status !== 'pending') {
+      throw new Error('Invalid approval request')
+    }
+    
+    const approvalRequest = approvalResults[0]
+    const campaign = {
+      id: approvalRequest.campaign_id,
+      name: approvalRequest.campaign_name,
+      advertiserId: approvalRequest.advertiserId,
+      agencyId: approvalRequest.agencyId,
+      budget: approvalRequest.budget,
+      status: approvalRequest.campaign_status,
+      reservationId: approvalRequest.reservationId,
+      createdBy: approvalRequest.createdBy,
+      advertiser: { name: approvalRequest.advertiser_name },
+      agency: { name: approvalRequest.agency_name }
+    }
+
+    if (approved) {
+      // Update approval request
+      const updateApprovalQuery = `
+        UPDATE "CampaignApproval"
+        SET status = 'approved',
+            "reviewedBy" = $2,
+            "reviewedAt" = $3,
+            "reviewNotes" = $4
+        WHERE id = $1
+      `
+      await querySchema(
+        context.organizationSlug,
+        updateApprovalQuery,
+        [approvalRequestId, context.userId, new Date(), comments]
+      )
+
+      // Create order from campaign
+      const order = await this.createOrderFromCampaign(context, campaign)
+
+      // Update campaign status
+      const updateCampaignQuery = `
+        UPDATE "Campaign"
+        SET status = 'approved',
+            "orderId" = $2,
+            "updatedAt" = $3
+        WHERE id = $1
+      `
+      await querySchema(
+        context.organizationSlug,
+        updateCampaignQuery,
+        [campaign.id, order.id, new Date()]
+      )
+
+      // Clear approval notifications
+      await this.clearApprovalNotifications(context, campaign.id, approvalRequestId)
+
+      // Notify seller of approval
+      await notificationService.createNotification({
+        userId: campaign.createdBy,
+        title: 'Campaign Approved',
+        message: `Campaign "${campaign.name}" has been approved and converted to an order`,
+        type: 'approval',
+        category: 'campaign',
+        actionUrl: `/orders/${order.id}`,
+        metadata: {
+          campaignId: campaign.id,
+          orderId: order.id,
+          approvedBy: context.userName
+        }
+      })
+
+      return { approved: true, orderId: order.id }
+    } else {
+      // Reject: Release reservations
+      if (campaign.reservationId) {
+        await this.releaseInventoryReservations(context, campaign.reservationId)
+      }
+
+      // Update approval request
+      const updateApprovalQuery = `
+        UPDATE "CampaignApproval"
+        SET status = 'rejected',
+            "reviewedBy" = $2,
+            "reviewedAt" = $3,
+            "reviewNotes" = $4
+        WHERE id = $1
+      `
+      await querySchema(
+        context.organizationSlug,
+        updateApprovalQuery,
+        [approvalRequestId, context.userId, new Date(), comments]
+      )
+
+      // Update campaign - move back to rejection fallback percentage (default 65%)
+      const rejectionFallback = workflowSettings.thresholds?.rejection_fallback || 65
+      const updateCampaignQuery = `
+        UPDATE "Campaign"
+        SET probability = $3,
+            status = 'negotiation',
+            "reservationId" = NULL,
+            "approvalRequestId" = NULL,
+            "updatedAt" = $2
+        WHERE id = $1
+      `
+      await querySchema(
+        context.organizationSlug,
+        updateCampaignQuery,
+        [campaign.id, new Date(), rejectionFallback]
+      )
+
+      // Clear approval notifications
+      await this.clearApprovalNotifications(context, campaign.id, approvalRequestId)
+
+      // Notify seller of rejection
+      await notificationService.createNotification({
+        userId: campaign.createdBy,
+        title: 'Campaign Rejected',
+        message: `Campaign "${campaign.name}" was not approved and moved back to ${rejectionFallback}%`,
+        type: 'rejection',
+        category: 'campaign',
+        priority: 'high',
+        actionUrl: `/campaigns/${campaign.id}`,
+        metadata: {
+          campaignId: campaign.id,
+          rejectedBy: context.userName,
+          reason: comments
+        }
+      })
+
+      return { approved: false }
+    }
+  }
+
+  /**
+   * Clear approval notifications
+   */
+  private async clearApprovalNotifications(
+    context: CampaignWorkflowContext,
+    campaignId: string,
+    approvalRequestId: string
+  ) {
+    // Mark all approval notifications as actioned
+    await prisma.notification.updateMany({
+      where: {
+        metadata: {
+          path: ['approvalRequestId'],
+          equals: approvalRequestId
+        },
+        requiresAction: true
+      },
+      data: {
+        requiresAction: false,
+        actionCompletedAt: new Date(),
+        actionCompletedBy: context.userId
+      }
+    })
+  }
+
+  /**
+   * Create order from approved campaign
+   */
+  private async createOrderFromCampaign(
+    context: CampaignWorkflowContext,
+    campaign: any
+  ): Promise<any> {
+    // Generate order number
+    const orderNumber = await this.generateOrderNumber(context)
+    
+    // Get scheduled spots for calculation
+    const spotsQuery = `
+      SELECT * FROM "ScheduledSpot" 
+      WHERE "campaignId" = $1
+    `
+    const scheduledSpots = await querySchema<any>(context.organizationSlug, spotsQuery, [campaign.id]) || []
+    
+    // Calculate totals
+    const totalAmount = scheduledSpots.reduce((sum: number, spot: any) => sum + (spot.rate || 0), 0)
+    const discountAmount = campaign.discount ? totalAmount * (campaign.discount / 100) : 0
+    const netAmount = totalAmount - discountAmount
+
+    // Check pre-bill requirements
+    const billingService = new (await import('./billing-service')).BillingService()
+    const preBillCheck = await billingService.checkPreBillRequirements(
+      context.organizationSlug,
+      campaign.advertiserId,
+      netAmount
+    )
+    
+    // Create the order
+    const orderId = uuidv4()
+    const insertOrderQuery = `
+      INSERT INTO "Order" (
+        id, "orderNumber", "campaignId", "sourceCampaignId",
+        "organizationId", "advertiserId", "agencyId",
+        status, "totalAmount", "discountAmount", "netAmount",
+        "requiresPreBill", "preBillStatus", "autoGenerated",
+        "createdBy", "updatedBy", "workflowMetadata",
+        "createdAt", "updatedAt"
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW()
+      ) RETURNING *
+    `
+    const orderResult = await querySchema<any>(
+      context.organizationSlug,
+      insertOrderQuery,
+      [
+        orderId, orderNumber, campaign.id, campaign.id,
+        context.organizationId, campaign.advertiserId, campaign.agencyId,
+        'draft', totalAmount, discountAmount, netAmount,
+        preBillCheck.required, preBillCheck.required ? 'pending' : null, true,
+        context.userId, context.userId,
+        JSON.stringify({
+          generatedFrom: 'campaign_approval',
+          approvalDate: new Date(),
+          approvedBy: context.userId
+        })
+      ]
+    )
+    const order = orderResult[0]
+
+    // Create order items from scheduled spots
+    const orderItems = []
+    for (const spot of scheduledSpots) {
+      const orderItemId = uuidv4()
+      const insertItemQuery = `
+        INSERT INTO "OrderItem" (
+          id, "orderId", "showId", "episodeId",
+          "placementType", "airDate", length, rate,
+          "actualRate", status, "createdAt", "updatedAt"
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW()
+        ) RETURNING *
+      `
+      const itemResult = await querySchema<any>(
+        context.organizationSlug,
+        insertItemQuery,
+        [
+          orderItemId, order.id, spot.showId, spot.episodeId,
+          spot.placementType, spot.airDate, spot.length || 30,
+          spot.rate, spot.rate, 'pending'
+        ]
+      )
+      orderItems.push(itemResult[0])
+    }
+
+    // Create tasks if workflow settings enable it
+    const workflowSettings = {
+      autoAssignAdRequests: true,
+      autoGenerateContracts: false,
+      autoGenerateInvoices: false,
+      defaultInvoiceDay: 1,
+      autoSendInvoices: false
+    }
+    
+    if (workflowSettings.autoAssignAdRequests !== false) {
+      await this.createAdRequests(context, order, campaign, orderItems)
+    }
+
+    // Create creative request for seller
+    await this.createCreativeRequest(context, order, campaign)
+
+    // Generate contract if workflow settings enable it
+    if (workflowSettings.autoGenerateContracts !== false) {
+      const contractService = new (await import('./contract-service')).ContractService()
+      const contractResult = await contractService.generateContract(context.organizationSlug, {
+        orderId: order.id,
+        autogenerate: true
+      })
+
+      if (!contractResult.success) {
+        console.error('Failed to generate contract:', contractResult.error)
+      } else {
+        // Log contract generation
+        await activityService.logActivity({
+          type: 'contract',
+          action: 'generated',
+          title: 'Contract Generated',
+          description: `Contract generated for order ${orderNumber}`,
+          actorId: context.userId,
+          actorName: context.userName,
+          actorEmail: '',
+          actorRole: context.userRole,
+          targetType: 'contract',
+          targetId: contractResult.contractId,
+          targetName: `Contract for ${orderNumber}`,
+          organizationId: context.organizationId,
+          campaignId: campaign.id,
+          orderId: order.id
+        })
+      }
+    }
+
+    // Schedule invoice generation if enabled
+    if (workflowSettings.autoGenerateInvoices !== false) {
+      await billingService.scheduleInvoiceGeneration(
+        context.organizationSlug,
+        order.id,
+        'monthly',
+        workflowSettings.defaultInvoiceDay || 1,
+        workflowSettings.autoSendInvoices || false
+      )
+    }
+
+    // Log activity
+    await activityService.logActivity({
+      type: 'order',
+      action: 'created',
+      title: 'Order Created from Campaign',
+      description: `Order ${orderNumber} created from approved campaign`,
+      actorId: context.userId,
+      actorName: context.userName,
+      actorEmail: '',
+      actorRole: context.userRole,
+      targetType: 'order',
+      targetId: order.id,
+      targetName: orderNumber,
+      organizationId: context.organizationId,
+      campaignId: campaign.id,
+      orderId: order.id,
+      metadata: {
+        campaignName: campaign.name,
+        totalAmount,
+        itemCount: orderItems.length,
+        preBillRequired: preBillCheck.required,
+        contractGenerated: workflowSettings.autoGenerateContracts !== false,
+        invoiceScheduled: workflowSettings.autoGenerateInvoices !== false
+      }
+    })
+
+    return order
+  }
+
+  /**
+   * Generate unique order number
+   */
+  private async generateOrderNumber(context: CampaignWorkflowContext): Promise<string> {
+    const date = new Date()
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    
+    // Get count of orders this month using querySchema
+    const startOfMonth = new Date(year, date.getMonth(), 1)
+    const countQuery = `
+      SELECT COUNT(*) as count FROM "Order" 
+      WHERE "createdAt" >= $1
+    `
+    const countResult = await querySchema<any>(context.organizationSlug, countQuery, [startOfMonth])
+    const count = parseInt(countResult[0]?.count || '0')
+    
+    const sequence = String(count + 1).padStart(4, '0')
+    return `ORD-${year}${month}-${sequence}`
+  }
+
+  /**
+   * Create ad requests for producers/talent
+   */
+  private async createAdRequests(
+    context: CampaignWorkflowContext,
+    order: any,
+    campaign: any,
+    orderItems: any[]
+  ) {
+    // Group order items by show
+    const itemsByShow = new Map<string, any[]>()
+    for (const item of orderItems) {
+      if (!itemsByShow.has(item.showId)) {
+        itemsByShow.set(item.showId, [])
+      }
+      itemsByShow.get(item.showId)!.push(item)
+    }
+
+    // Create ad request for each show
+    for (const [showId, items] of itemsByShow) {
+      // Get show details with assignments using querySchema
+      const showQuery = `
+        SELECT s.*, 
+               array_agg(DISTINCT sp."userId") FILTER (WHERE sp."userId" IS NOT NULL) as producer_ids,
+               array_agg(DISTINCT st."userId") FILTER (WHERE st."userId" IS NOT NULL) as talent_ids
+        FROM "Show" s
+        LEFT JOIN "ShowProducer" sp ON sp."showId" = s.id
+        LEFT JOIN "ShowTalent" st ON st."showId" = s.id
+        WHERE s.id = $1
+        GROUP BY s.id
+      `
+      const showResult = await querySchema<any>(context.organizationSlug, showQuery, [showId])
+      const show = showResult[0]
+
+      if (!show) continue
+
+      // Create request for primary producer
+      if (show.producer_ids && show.producer_ids.length > 0) {
+        const producerId = show.producer_ids[0]
+        const requestId = uuidv4()
+        const insertRequestQuery = `
+          INSERT INTO "AdRequest" (
+            id, "orderId", "showId", "assignedToId", "assignedToRole",
+            status, priority, title, description, requirements,
+            "dueDate", "createdBy", "organizationId", "createdAt", "updatedAt"
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()
+          )
+        `
+        await querySchema(
+          context.organizationSlug,
+          insertRequestQuery,
+          [
+            requestId, order.id, showId, producerId, 'producer',
+            'pending', 'medium',
+            `Ad Production Request - ${campaign.name}`,
+            `Please prepare ad content for ${items.length} spots on ${show.name}`,
+            JSON.stringify({
+              advertiser: campaign.advertiser?.name,
+              campaignName: campaign.name,
+              spotCount: items.length,
+              placementTypes: [...new Set(items.map(i => i.placementType))],
+              airDates: items.map(i => i.airDate)
+            }),
+            new Date(Math.min(...items.map(i => new Date(i.airDate).getTime())) - 7 * 24 * 60 * 60 * 1000),
+            context.userId,
+            context.organizationId
+          ]
+        )
+
+        // Notify producer
+        await notificationService.createNotification({
+          userId: producerId,
+          title: 'New Ad Production Request',
+          message: `New ad request for ${show.name} - ${campaign.name}`,
+          type: 'task_assignment',
+          category: 'tasks',
+          priority: 'high',
+          requiresAction: true,
+          actionUrl: `/tasks/ad-requests`,
+          metadata: {
+            orderId: order.id,
+            showId: showId,
+            showName: show.name,
+            campaignName: campaign.name
+          }
+        })
+      }
+
+      // Create request for talent if live read
+      const liveReadItems = items.filter(i => i.isLiveRead)
+      if (liveReadItems.length > 0 && show.talent_ids && show.talent_ids.length > 0) {
+        const talentId = show.talent_ids[0]
+        const requestId = uuidv4()
+        const insertRequestQuery = `
+          INSERT INTO "AdRequest" (
+            id, "orderId", "showId", "assignedToId", "assignedToRole",
+            status, priority, title, description, requirements,
+            "dueDate", "createdBy", "organizationId", "createdAt", "updatedAt"
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()
+          )
+        `
+        await querySchema(
+          context.organizationSlug,
+          insertRequestQuery,
+          [
+            requestId, order.id, showId, talentId, 'talent',
+            'pending', 'medium',
+            `Live Read Request - ${campaign.name}`,
+            `Please prepare for ${liveReadItems.length} live read spots on ${show.name}`,
+            JSON.stringify({
+              advertiser: campaign.advertiser?.name,
+              campaignName: campaign.name,
+              spotCount: liveReadItems.length,
+              airDates: liveReadItems.map(i => i.airDate)
+            }),
+            new Date(Math.min(...liveReadItems.map(i => new Date(i.airDate).getTime())) - 3 * 24 * 60 * 60 * 1000),
+            context.userId,
+            context.organizationId
+          ]
+        )
+
+        // Notify talent
+        await notificationService.createNotification({
+          userId: talentId,
+          title: 'New Live Read Request',
+          message: `Live read request for ${show.name} - ${campaign.name}`,
+          type: 'task_assignment',
+          category: 'tasks',
+          priority: 'high',
+          requiresAction: true,
+          actionUrl: `/tasks/ad-requests`,
+          metadata: {
+            orderId: order.id,
+            showId: showId,
+            showName: show.name,
+            campaignName: campaign.name
+          }
+        })
+      }
+    }
+  }
+
+  /**
+   * Create creative request for seller
+   */
+  private async createCreativeRequest(
+    context: CampaignWorkflowContext,
+    order: any,
+    campaign: any
+  ) {
+    // Create creative request using querySchema
+    const creativeRequestId = uuidv4()
+    const insertQuery = `
+      INSERT INTO "CreativeRequest" (
+        id, "orderId", "campaignId", "assignedToId",
+        status, priority, title, description,
+        "requiredAssets", "dueDate", "createdBy",
+        "organizationId", "createdAt", "updatedAt"
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+      ) RETURNING *
+    `
+    const creativeResult = await querySchema<any>(
+      context.organizationSlug,
+      insertQuery,
+      [
+        creativeRequestId,
+        order.id,
+        campaign.id,
+        campaign.createdBy,
+        'pending',
+        'high',
+        `Creative Assets Required - ${campaign.name}`,
+        'Please provide the required creative assets for this campaign',
+        JSON.stringify([
+          { type: 'script', required: true, description: 'Ad script or talking points' },
+          { type: 'audio', required: false, description: 'Pre-recorded audio if applicable' },
+          { type: 'artwork', required: false, description: 'Visual assets if needed' },
+          { type: 'guidelines', required: true, description: 'Brand guidelines and requirements' }
+        ]),
+        new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        context.userId,
+        context.organizationId
+      ]
+    )
+    const creativeRequest = creativeResult[0]
+
+    // Notify seller
+    await notificationService.createNotification({
+      userId: campaign.createdBy,
+      title: 'Creative Assets Required',
+      message: `Please provide creative assets for "${campaign.name}"`,
+      type: 'task_assignment',
+      category: 'tasks',
+      priority: 'high',
+      requiresAction: true,
+      actionUrl: `/tasks/creative-requests/${creativeRequest.id}`,
+      metadata: {
+        orderId: order.id,
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        creativeRequestId: creativeRequest.id
+      }
+    })
+  }
+
+  private validateThreshold(value: any, defaultValue: number, min: number, max: number): number {
+    // Convert to number and validate
+    const numValue = typeof value === 'number' ? value : parseFloat(value)
+    
+    // Check if value is valid
+    if (isNaN(numValue) || numValue === null || numValue === undefined) {
+      console.warn(`Invalid threshold value: ${value}, using default: ${defaultValue}`)
+      return defaultValue
+    }
+    
+    // Ensure value is within bounds
+    if (numValue < min) {
+      console.warn(`Threshold value ${numValue} below minimum ${min}, using minimum`)
+      return min
+    }
+    
+    if (numValue > max) {
+      console.warn(`Threshold value ${numValue} above maximum ${max}, using maximum`)
+      return max
+    }
+    
+    return numValue
+  }
+
+  /**
+   * Get workflow settings for an organization
+   */
+  private async getWorkflowSettings(organizationId: string): Promise<WorkflowSettings> {
+    try {
+      // Try to fetch settings from WorkflowSettings table
+      const settingsQuery = `
+        SELECT stages, thresholds, notifications, "isActive", metadata
+        FROM public."WorkflowSettings"
+        WHERE "organizationId" = $1 
+        AND "workflowType" = 'campaign_approval'
+        AND "isActive" = true
+      `
+      const { data: settings } = await safeQuerySchema('public', settingsQuery, [organizationId])
+      
+      if (settings && settings.length > 0) {
+        const dbSettings = settings[0]
+        
+        // Check for v2PresaleTiming feature flag in metadata
+        const v2PresaleTiming = dbSettings.metadata?.v2PresaleTiming ?? DEFAULT_WORKFLOW_SETTINGS.v2PresaleTiming
+        
+        // Validate and sanitize thresholds
+        const thresholds = dbSettings.thresholds || {}
+        const validatedThresholds = {
+          approval_trigger: this.validateThreshold(thresholds.approval_trigger, 90, 50, 100),
+          auto_win: this.validateThreshold(thresholds.auto_win, 100, 95, 100),
+          rejection_fallback: this.validateThreshold(thresholds.rejection_fallback, 65, 0, 85),
+          reservation_threshold: this.validateThreshold(thresholds.reservation_threshold, 80, 50, 95)
+        }
+        
+        return {
+          ...DEFAULT_WORKFLOW_SETTINGS,
+          v2PresaleTiming,
+          thresholds: validatedThresholds,
+          notifications: dbSettings.notifications || {},
+          stages: dbSettings.stages || [],
+          ...dbSettings.metadata // Allow metadata overrides
+        }
+      }
+    } catch (error) {
+      console.log('Could not fetch workflow settings, using defaults:', error)
+    }
+    
+    // Return default settings
+    return DEFAULT_WORKFLOW_SETTINGS
+  }
+
+  /**
+   * Handle first valid schedule creation - auto-advance to 35% if enabled
+   */
+  async handleFirstValidSchedule(
+    context: CampaignWorkflowContext,
+    scheduleData: any
+  ) {
+    console.log('[Workflow] handleFirstValidSchedule called with context:', {
+      campaignId: context.campaignId,
+      organizationId: context.organizationId,
+      organizationSlug: context.organizationSlug
+    })
+    
+    const workflowSettings = await this.getWorkflowSettings(context.organizationId)
+    console.log('[Workflow] Settings loaded:', { 
+      v2PresaleTiming: workflowSettings.v2PresaleTiming,
+      hasSettings: !!workflowSettings
+    })
+    
+    // Only proceed if v2PresaleTiming is enabled
+    if (!workflowSettings.v2PresaleTiming) {
+      console.log('[Workflow] v2PresaleTiming not enabled, skipping auto-advance')
+      return { advanced: false }
+    }
+    
+    // Check if schedule is valid
+    if (!isScheduleValid(scheduleData)) {
+      return { advanced: false }
+    }
+    
+    // Get current campaign status
+    const campaignQuery = `
+      SELECT id, name, probability, status 
+      FROM "Campaign" 
+      WHERE id = $1
+    `
+    const campaigns = await querySchema(context.organizationSlug, campaignQuery, [context.campaignId])
+    
+    if (!campaigns || campaigns.length === 0) {
+      return { advanced: false }
+    }
+    
+    const campaign = campaigns[0]
+    
+    // Only auto-advance if at 10% (Active Pre-Sale)
+    if (campaign.probability !== WORKFLOW_STATES.ACTIVE_PRESALE) {
+      return { advanced: false }
+    }
+    
+    // Check if this is the first valid schedule
+    const existingSchedulesQuery = `
+      SELECT COUNT(*) as count 
+      FROM "CampaignSchedule" 
+      WHERE "campaignId" = $1 
+      AND status != 'cancelled'
+    `
+    const countResult = await querySchema(context.organizationSlug, existingSchedulesQuery, [context.campaignId])
+    const scheduleCount = parseInt(countResult[0]?.count || '0')
+    
+    // If this is not the first schedule, don't auto-advance
+    if (scheduleCount > 1) {
+      return { advanced: false }
+    }
+    
+    // Auto-advance to 35%
+    const updateQuery = `
+      UPDATE "Campaign" 
+      SET probability = $2, 
+          status = 'prospecting',
+          "updatedAt" = NOW()
+      WHERE id = $1
+    `
+    await querySchema(
+      context.organizationSlug, 
+      updateQuery, 
+      [context.campaignId, WORKFLOW_STATES.PROSPECTING]
+    )
+    
+    // Log activity
+    await activityService.logActivity({
+      type: 'campaign',
+      action: 'auto_advanced',
+      title: 'Campaign Auto-Advanced',
+      description: `Campaign automatically advanced to ${WORKFLOW_STATES.PROSPECTING}% on first valid schedule creation`,
+      actorId: context.userId,
+      actorName: context.userName,
+      actorEmail: '',
+      actorRole: context.userRole,
+      targetType: 'campaign',
+      targetId: context.campaignId,
+      targetName: campaign.name,
+      organizationId: context.organizationId,
+      metadata: {
+        fromProbability: WORKFLOW_STATES.ACTIVE_PRESALE,
+        toProbability: WORKFLOW_STATES.PROSPECTING,
+        trigger: 'first_valid_schedule'
+      }
+    })
+    
+    // Send notification if enabled
+    if (workflowSettings.notifyOnStatusChange) {
+      await notificationService.createNotification({
+        userId: campaign.createdBy || context.userId,
+        title: 'Campaign Advanced',
+        message: `Campaign "${campaign.name}" has been automatically advanced to ${WORKFLOW_STATES.PROSPECTING}% after creating a valid schedule`,
+        type: 'status_update',
+        category: 'campaign',
+        actionUrl: `/campaigns/${context.campaignId}`,
+        metadata: {
+          campaignId: context.campaignId,
+          campaignName: campaign.name,
+          newProbability: WORKFLOW_STATES.PROSPECTING
+        }
+      })
+    }
+    
+    // Start rate-card delta collection
+    await this.startRateCardDeltaCollection(context, scheduleData)
+    
+    return { 
+      advanced: true, 
+      newProbability: WORKFLOW_STATES.PROSPECTING 
+    }
+  }
+
+  /**
+   * Start collecting rate-card deltas for a schedule
+   */
+  private async startRateCardDeltaCollection(
+    context: CampaignWorkflowContext,
+    scheduleData: any
+  ) {
+    try {
+      // This is a placeholder for rate-card delta collection
+      // Will be implemented when rate cards are fully set up
+      console.log('[Rate Card Delta] Starting collection for campaign:', context.campaignId)
+      
+      // Store baseline rates for comparison
+      const baselineQuery = `
+        INSERT INTO "RateCardBaseline" (
+          id, "campaignId", "scheduleId", "baselineData", "createdAt"
+        ) VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT ("campaignId", "scheduleId") 
+        DO UPDATE SET "baselineData" = $4, "updatedAt" = NOW()
+      `
+      
+      // Note: This table doesn't exist yet - will be added in migration
+      // For now, just log the intent
+      console.log('[Rate Card Delta] Would store baseline for schedule:', scheduleData.id)
+    } catch (error) {
+      // Non-critical - don't fail the workflow
+      console.error('[Rate Card Delta] Failed to start collection:', error)
+    }
+  }
+}
+
+export const campaignWorkflowService = new CampaignWorkflowService()
