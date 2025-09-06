@@ -1,6 +1,6 @@
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { UserService } from '@/lib/auth/user-service'
 
 // Define redirect mappings from old pages to new Post-Sale tabs
 const postSaleRedirects: Record<string, string> = {
@@ -49,14 +49,43 @@ export async function middleware(request: NextRequest) {
   // Add comprehensive logging
   console.log('🔍 Middleware: Processing request for:', pathname)
 
+  // Create Supabase client
+  let supabaseResponse = NextResponse.next({
+    request,
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
+          supabaseResponse = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // Refresh session if expired
+  const { data: { user } } = await supabase.auth.getUser()
+
   // Check if current path should be redirected to Post-Sale Management
   const redirectTarget = postSaleRedirects[pathname]
   
   if (redirectTarget) {
     // Check if user is authenticated
-    const authToken = request.cookies.get('auth-token')
-    
-    if (authToken) {
+    if (user) {
       // Check if auto-redirect is enabled
       // Now enabled since old pages have been archived
       const shouldAutoRedirect = true // Enabled after archiving old pages
@@ -80,7 +109,7 @@ export async function middleware(request: NextRequest) {
   // Allow public routes (including impersonate pages)
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     console.log('🔍 Middleware: Public route, allowing access:', pathname)
-    return NextResponse.next()
+    return supabaseResponse
   }
 
   // Allow static assets
@@ -89,27 +118,25 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/static') ||
     pathname.includes('.') // files with extensions
   ) {
-    return NextResponse.next()
+    return supabaseResponse
   }
 
   // TEMPORARY: Allow episode detail pages to handle their own auth
   // This prevents middleware from redirecting before the page can check auth
   if (pathname.match(/^\/episodes\/[^\/]+$/)) {
     console.log('🔍 Middleware: Episode detail page, delegating auth to page component:', pathname)
-    return NextResponse.next()
+    return supabaseResponse
   }
-
-  // Check authentication
-  const authToken = request.cookies.get('auth-token')
 
   // For API routes, we can't use Prisma directly in middleware
   // So we'll let the API routes handle their own auth
   if (pathname.startsWith('/api')) {
-    return NextResponse.next()
+    return supabaseResponse
   }
 
-  if (!authToken) {
-    console.log(`🔍 Middleware: No auth token for path ${pathname}`)
+  // Check authentication with Supabase
+  if (!user) {
+    console.log(`🔍 Middleware: No authenticated user for path ${pathname}`)
     
     // Redirect to login
     const loginUrl = new URL('/login', request.url)
@@ -117,9 +144,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // For non-API routes, we'll do basic cookie validation
-  // The actual session validation will happen in the page components
-  return NextResponse.next()
+  // For non-API routes, user is authenticated
+  return supabaseResponse
 }
 
 export const config = {
